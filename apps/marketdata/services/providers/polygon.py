@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-import requests
-
-from .base import OHLCVBar
+from .base import OHLCVBar, http_get_with_retry
 
 
 class PolygonProvider:
@@ -37,8 +35,7 @@ class PolygonProvider:
             "limit": int(limit),
             "apiKey": self.api_key,
         }
-        r = requests.get(url, params=params, timeout=30)
-        r.raise_for_status()
+        r = http_get_with_retry(url, params=params, timeout=30)
         payload = r.json() or {}
         results = payload.get("results") or []
         if not results:

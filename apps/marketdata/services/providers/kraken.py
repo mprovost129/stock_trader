@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import requests
-
-from .base import OHLCVBar
+from .base import OHLCVBar, http_get_with_retry
 
 
 class KrakenProvider:
@@ -16,8 +14,7 @@ class KrakenProvider:
         interval = _interval(timeframe)
         url = f"{self.base_url}/0/public/OHLC"
         params = {"pair": pair, "interval": interval}
-        r = requests.get(url, params=params, timeout=30)
-        r.raise_for_status()
+        r = http_get_with_retry(url, params=params, timeout=30)
         payload = r.json() or {}
         errors = payload.get("error") or []
         if errors:

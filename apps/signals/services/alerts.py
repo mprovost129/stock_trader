@@ -364,6 +364,15 @@ def build_discord_payload(signal: Signal) -> dict:
     qty_text = str(plan.suggested_qty) if plan.suggested_qty is not None else "n/a"
     risk_pct_display = (Decimal(plan.risk_per_trade_pct) * Decimal("100")).quantize(Decimal("0.01"))
     signal_type_text = signal.signal_label or signal.signal_kind
+    # Position size and % of equity — available directly from TradePlan
+    position_size_text = "n/a"
+    if plan.entry_price is not None and plan.suggested_qty is not None:
+        position_cost = (Decimal(plan.entry_price) * plan.suggested_qty).quantize(Decimal("0.01"))
+        if plan.account_equity and plan.account_equity > 0:
+            weight_pct = (position_cost / Decimal(plan.account_equity) * Decimal("100")).quantize(Decimal("0.1"))
+            position_size_text = f"${position_cost:,.2f} ({weight_pct}% of equity)"
+        else:
+            position_size_text = f"${position_cost:,.2f}"
     content = f"{direction_emoji} {instrument.symbol} {signal.direction} — {signal.strategy.name} ({signal.timeframe}) [{signal_type_text}]"
     embed = {
         "title": f"{instrument.symbol} {signal.direction} setup",
@@ -371,13 +380,14 @@ def build_discord_payload(signal: Signal) -> dict:
         "color": color,
         "fields": [
             {"name": "Signal Type", "value": signal_type_text, "inline": True},
+            {"name": "Score", "value": score_text, "inline": True},
             {"name": "Entry", "value": _fmt_price(plan.entry_price), "inline": True},
             {"name": "Stop", "value": _fmt_price(plan.stop_price), "inline": True},
             {"name": "Target 1", "value": _fmt_price(plan.target_1), "inline": True},
             {"name": "Target 2", "value": _fmt_price(plan.target_2), "inline": True},
             {"name": "Suggested Qty", "value": qty_text, "inline": True},
+            {"name": "Position Size", "value": position_size_text, "inline": True},
             {"name": "Risk %", "value": f"{risk_pct_display}%", "inline": True},
-            {"name": "Score", "value": score_text, "inline": True},
             {"name": "Score Components", "value": _fmt_components(signal.score_components), "inline": False},
             {"name": "Time", "value": ts_local.strftime("%Y-%m-%d %I:%M %p %Z"), "inline": True},
             {"name": "Asset Class", "value": instrument.asset_class, "inline": True},

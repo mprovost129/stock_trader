@@ -2,8 +2,12 @@ services:
   - type: web
     name: stock-trader-web
     runtime: python
-    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
-    startCommand: python manage.py migrate && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT
+    buildCommand: >
+      pip install -r requirements.txt &&
+      python manage.py collectstatic --noinput &&
+      python manage.py migrate --noinput
+    startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2
+    healthCheckPath: /health/
     autoDeploy: true
     envVars:
       - key: DJANGO_SETTINGS_MODULE
@@ -13,11 +17,23 @@ services:
       - key: DJANGO_CSRF_TRUSTED_ORIGINS
         value: https://stock-trader-tdvu.onrender.com
       - key: DJANGO_SECRET_KEY
-        generateValue: true
+        sync: false          # set once in Render dashboard — shared with worker via env group
       - key: DATABASE_URL
         fromDatabase:
           name: stock-trader-db
           property: connectionString
+      - key: POLYGON_API_KEY
+        sync: false
+      - key: DISCORD_WEBHOOK_URL
+        sync: false
+      - key: ALERT_MIN_SCORE_EVENT
+        value: "80"
+      - key: ALERT_MIN_SCORE_STATE
+        value: "60"
+      - key: ALERT_MAX_PER_DAY
+        value: "12"
+      - key: SCHEDULER_MAX_SYMBOLS_PER_CYCLE
+        value: "25"
 
   - type: worker
     name: stock-trader-scheduler
@@ -30,14 +46,24 @@ services:
         value: config.settings.prod
       - key: DJANGO_ALLOWED_HOSTS
         value: stock-trader-tdvu.onrender.com
-      - key: DJANGO_CSRF_TRUSTED_ORIGINS
-        value: https://stock-trader-tdvu.onrender.com
       - key: DJANGO_SECRET_KEY
-        generateValue: true
+        sync: false          # must match the web service value
       - key: DATABASE_URL
         fromDatabase:
           name: stock-trader-db
           property: connectionString
+      - key: POLYGON_API_KEY
+        sync: false
+      - key: DISCORD_WEBHOOK_URL
+        sync: false
+      - key: ALERT_MIN_SCORE_EVENT
+        value: "80"
+      - key: ALERT_MIN_SCORE_STATE
+        value: "60"
+      - key: ALERT_MAX_PER_DAY
+        value: "12"
+      - key: SCHEDULER_MAX_SYMBOLS_PER_CYCLE
+        value: "25"
 
 databases:
   - name: stock-trader-db

@@ -47,3 +47,27 @@ class PriceBar(models.Model):
 
     def __str__(self) -> str:
         return f"{self.instrument.symbol} {self.timeframe} {self.ts.isoformat()}"
+
+
+class IngestionState(models.Model):
+    """Tracks per-symbol ingestion state (cooldowns, unsupported flags).
+
+    Replaces the previous .runtime/ingestion_state.json file so that state
+    survives process restarts and works correctly on ephemeral filesystems
+    (e.g. Render free tier).
+    """
+
+    # Key is "{SYMBOL}:{provider}" for cooldowns; just "{SYMBOL}" for unsupported flags.
+    key = models.CharField(max_length=64, unique=True)
+    reason = models.CharField(max_length=255, blank=True)
+    cooldown_until = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["key"], name="idx_ingestion_state_key"),
+        ]
+
+    def __str__(self) -> str:
+        return self.key

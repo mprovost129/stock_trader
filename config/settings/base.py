@@ -227,3 +227,47 @@ SCHEDULER_HELD_POSITION_CHECK_EVERY = int(os.getenv("SCHEDULER_HELD_POSITION_CHE
 SCHEDULER_PORTFOLIO_SNAPSHOT_EVERY = int(os.getenv("SCHEDULER_PORTFOLIO_SNAPSHOT_EVERY", "4"))
 PORTFOLIO_HEALTH_DETERIORATION_THRESHOLD = int(os.getenv("PORTFOLIO_HEALTH_DETERIORATION_THRESHOLD", "10"))
 PORTFOLIO_HEALTH_ALERT_COOLDOWN_MINUTES = int(os.getenv("PORTFOLIO_HEALTH_ALERT_COOLDOWN_MINUTES", "120"))
+
+
+# --- Logging ---
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "standard": {
+            "format": "[{asctime}] {levelname} {name}: {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
+        },
+    },
+    "loggers": {
+        # All app code — INFO and above goes to console
+        "apps": {
+            "handlers": ["console"],
+            "level": os.getenv("DJANGO_LOG_LEVEL_APPS", "INFO"),
+            "propagate": False,
+        },
+        # Django request logger — WARNING and above (suppress 200/301 noise)
+        "django.request": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        # Django security logger — WARNING and above
+        "django.security": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+    },
+    # Root logger: WARNING by default so third-party noise stays quiet
+    "root": {
+        "handlers": ["console"],
+        "level": os.getenv("DJANGO_LOG_LEVEL", "WARNING"),
+    },
+}

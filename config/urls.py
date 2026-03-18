@@ -3,6 +3,7 @@
 from django.contrib import admin
 from django.contrib.auth import logout
 from django.contrib.auth import views as auth_views
+from django.http import HttpResponse
 from django.shortcuts import redirect
 from django.urls import include, path
 
@@ -11,7 +12,13 @@ def logout_view(request):
     logout(request)
     return redirect("login")
 
+
+def health(request):
+    return HttpResponse("ok", content_type="text/plain")
+
+
 urlpatterns = [
+    path("health/", health, name="health"),
     path("admin/", admin.site.urls),
 
     # Auth

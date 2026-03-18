@@ -6,6 +6,7 @@ from django.db.models.functions import Coalesce
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.http import Http404, HttpResponseForbidden
 from django.urls import reverse
 from django.utils.http import urlencode
@@ -164,7 +165,10 @@ def list_signals(request):
     if max_score is not None:
         qs = qs.filter(score__lte=max_score)
 
-    signals = list(qs[:200])
+    paginator = Paginator(qs, 50)
+    page_number = request.GET.get("page", 1)
+    page_obj = paginator.get_page(page_number)
+    signals = list(page_obj)
     risk_profile = UserRiskProfile.objects.filter(user=request.user).first()
     account_equity = Decimal(risk_profile.account_equity) if risk_profile and risk_profile.account_equity is not None else None
     risk_pct = Decimal(risk_profile.risk_per_trade_pct) if risk_profile and risk_profile.risk_per_trade_pct is not None else None
@@ -226,6 +230,7 @@ def list_signals(request):
         "signals/list.html",
         {
             "signals": signals,
+            "page_obj": page_obj,
             "outcome_status": outcome_status,
             "review_queue": bool(review_queue),
             "min_price": min_price_raw or "",

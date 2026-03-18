@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import requests
-
-from .base import OHLCVBar
+from .base import OHLCVBar, http_get_with_retry
 
 
 class CoinbaseAdvancedProvider:
@@ -27,8 +25,7 @@ class CoinbaseAdvancedProvider:
         params = {
             "granularity": int(granularity),
         }
-        r = requests.get(url, params=params, timeout=30)
-        r.raise_for_status()
+        r = http_get_with_retry(url, params=params, timeout=30)
         data = r.json() or []
         # Coinbase returns newest-first by default: [ time, low, high, open, close, volume ]
         data = list(reversed(data))

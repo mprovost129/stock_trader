@@ -127,6 +127,19 @@ def check_and_send_portfolio_health_notification(*, user, dry_run: bool = False)
     return EscalationRunSummary(triggered=True, reason="triggered", headline=headline, results=results)
 
 
+def notify_scheduler_failure(*, iteration: int, error: str, dry_run: bool = False) -> EscalationRunSummary:
+    """Send a Discord/email notification when a scheduler cycle raises an unhandled exception."""
+    headline = f"Trading Advisor: scheduler cycle {iteration} failed"
+    body = f"Cycle {iteration} raised an exception and was skipped.\n\nError:\n{error[:1800]}"
+    results = _deliver_operator_notification(
+        kind=OperatorNotification.Kind.SCHEDULER_FAILURE,
+        headline=headline,
+        body=body,
+        dry_run=dry_run,
+    )
+    return EscalationRunSummary(triggered=True, reason="scheduler_error", headline=headline, results=results)
+
+
 def _collect_problems(summary) -> list[str]:
     problems: list[str] = []
     if summary.in_drought:

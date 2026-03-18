@@ -110,6 +110,7 @@ class OperatorNotification(models.Model):
         DELIVERY_HEALTH = "DELIVERY_HEALTH", "Delivery health"
         DELIVERY_RECOVERY = "DELIVERY_RECOVERY", "Delivery recovery"
         PORTFOLIO_HEALTH = "PORTFOLIO_HEALTH", "Portfolio health"
+        SCHEDULER_FAILURE = "SCHEDULER_FAILURE", "Scheduler failure"
 
     class Channel(models.TextChoices):
         DISCORD = "DISCORD", "Discord"

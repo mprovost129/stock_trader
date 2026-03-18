@@ -6,6 +6,7 @@ from django.db.models.functions import Coalesce
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -703,6 +704,10 @@ def holdings_list(request):
         allowed_ids = {item.position.id for item in snapshots if item.recommendation_code == recommendation_filter}
         positions = [item for item in positions if item.status == HeldPosition.Status.CLOSED or item.id in allowed_ids]
 
+    holdings_paginator = Paginator(positions, 50)
+    holdings_page_obj = holdings_paginator.get_page(request.GET.get("page", 1))
+    positions = list(holdings_page_obj)
+
     watchlist_instrument_ids = active_watchlist_instrument_ids(request.user)
     selected_account_label = account_filter or ""
     summary = summarize_open_holdings(user=request.user, account_label=selected_account_label)
@@ -728,6 +733,7 @@ def holdings_list(request):
         "portfolios/holdings_list.html",
         {
             "positions": positions,
+            "page_obj": holdings_page_obj,
             "snapshot_map": snapshot_map,
             "summary": summary,
             "min_price": min_price_raw or "",

@@ -11,6 +11,7 @@ from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
 
 from apps.marketdata.services.runtime import classify_runtime_mode
+from apps.signals.services.escalation import notify_scheduler_failure
 
 
 @dataclass(frozen=True)
@@ -172,6 +173,10 @@ class Command(BaseCommand):
                 status = "error"
                 message = str(exc)
                 self.stdout.write(self.style.ERROR(f"Cycle {iteration} failed: {exc}"))
+                try:
+                    notify_scheduler_failure(iteration=iteration, error=str(exc), dry_run=dry_run)
+                except Exception:  # noqa: BLE001
+                    pass  # best-effort; never let notification failure break the loop
 
             cycle_finished = timezone.now()
             summary = CycleSummary(

@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import requests
-
-from .base import OHLCVBar
+from .base import OHLCVBar, http_get_with_retry
 
 
 class BinanceProvider:
@@ -16,8 +14,7 @@ class BinanceProvider:
         interval = _interval(timeframe)
         url = f"{self.base_url}/api/v3/klines"
         params = {"symbol": pair, "interval": interval, "limit": int(limit or 300)}
-        r = requests.get(url, params=params, timeout=30)
-        r.raise_for_status()
+        r = http_get_with_retry(url, params=params, timeout=30)
         data = r.json() or []
         for row in data:
             ts = datetime.fromtimestamp(int(row[0]) / 1000.0, tz=timezone.utc)

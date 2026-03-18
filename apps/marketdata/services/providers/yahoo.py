@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import requests
-
-from .base import OHLCVBar
+from .base import OHLCVBar, http_get_with_retry
 
 
 class YahooFinanceProvider:
@@ -30,8 +28,7 @@ class YahooFinanceProvider:
             "includePrePost": "false",
             "events": "div,splits",
         }
-        r = requests.get(url, params=params, timeout=30)
-        r.raise_for_status()
+        r = http_get_with_retry(url, params=params, timeout=30)
         payload = r.json() or {}
 
         chart = payload.get("chart") or {}

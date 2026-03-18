@@ -2,6 +2,7 @@ from collections import defaultdict
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
 from django.db.models import Avg, Count, Q
 from django.shortcuts import render
 from django.utils.http import urlencode
@@ -243,10 +244,11 @@ def _build_holding_preset_widgets(user):
     ).order_by("name")
     for preset in presets:
         filters = _extract_holding_filter_params(preset.filters or {})
-        positions = list(HeldPosition.objects.select_related("instrument").filter(user=user))
         status = filters.get("status")
+        base_qs = HeldPosition.objects.select_related("instrument").filter(user=user)
         if status:
-            positions = [item for item in positions if item.status == status]
+            base_qs = base_qs.filter(status=status)
+        positions = list(base_qs)
         source = filters.get("source")
         if source:
             positions = [item for item in positions if item.source == source]
@@ -404,25 +406,35 @@ def home(request):
     next_session_queue = build_next_session_queue(username=request.user.username, limit=10)
     high_risk_positions = rank_open_positions(username=request.user.username, limit=5)
     trade_lifecycle = get_trade_lifecycle_summary()
-    held_positions = summarize_open_holdings(user=request.user)
-    portfolio_exposure = summarize_portfolio_exposure(user=request.user)
-    holding_sector_exposure = summarize_holding_sector_exposure(user=request.user)
-    broker_snapshot_posture = summarize_broker_snapshot_posture(user=request.user)
-    account_risk_posture = summarize_account_risk_posture(user=request.user)
-    account_exposure_heatmap = summarize_account_exposure_heatmap(user=request.user)
-    account_drawdown_monitoring = summarize_account_drawdown_monitoring(user=request.user)
-    holding_risk_guardrails = summarize_holding_risk_guardrails(user=request.user)
-    account_stop_guardrails = summarize_account_stop_guardrails(user=request.user)
-    account_holding_queues = summarize_account_holding_queues(user=request.user)
-    stop_discipline_history = summarize_stop_discipline_history(user=request.user)
-    stop_discipline_trends = summarize_stop_discipline_trends(user=request.user)
-    stop_policy_timeliness = summarize_stop_policy_timeliness(user=request.user)
-    stop_policy_exception_trends = summarize_stop_policy_exception_trends(user=request.user)
-    account_retention_override_posture = summarize_account_retention_override_posture(user=request.user)
-    account_retention_template_drift = summarize_account_retention_template_drift(user=request.user)
-    evidence_lifecycle_automation = summarize_evidence_lifecycle_automation(user=request.user)
-    portfolio_health = summarize_portfolio_health_score(user=request.user)
-    portfolio_health_history = summarize_portfolio_health_history(user=request.user, limit=6)
+    uid = request.user.pk
+    _cache_ttl = 60  # seconds — scheduler runs every 5 min; 60s keeps UI snappy without staleness
+
+    def _cached(key, fn):
+        result = cache.get(key)
+        if result is None:
+            result = fn()
+            cache.set(key, result, _cache_ttl)
+        return result
+
+    held_positions = _cached(f"dash:held_positions:{uid}", lambda: summarize_open_holdings(user=request.user))
+    portfolio_exposure = _cached(f"dash:portfolio_exposure:{uid}", lambda: summarize_portfolio_exposure(user=request.user))
+    holding_sector_exposure = _cached(f"dash:holding_sector_exposure:{uid}", lambda: summarize_holding_sector_exposure(user=request.user))
+    broker_snapshot_posture = _cached(f"dash:broker_snapshot_posture:{uid}", lambda: summarize_broker_snapshot_posture(user=request.user))
+    account_risk_posture = _cached(f"dash:account_risk_posture:{uid}", lambda: summarize_account_risk_posture(user=request.user))
+    account_exposure_heatmap = _cached(f"dash:account_exposure_heatmap:{uid}", lambda: summarize_account_exposure_heatmap(user=request.user))
+    account_drawdown_monitoring = _cached(f"dash:account_drawdown_monitoring:{uid}", lambda: summarize_account_drawdown_monitoring(user=request.user))
+    holding_risk_guardrails = _cached(f"dash:holding_risk_guardrails:{uid}", lambda: summarize_holding_risk_guardrails(user=request.user))
+    account_stop_guardrails = _cached(f"dash:account_stop_guardrails:{uid}", lambda: summarize_account_stop_guardrails(user=request.user))
+    account_holding_queues = _cached(f"dash:account_holding_queues:{uid}", lambda: summarize_account_holding_queues(user=request.user))
+    stop_discipline_history = _cached(f"dash:stop_discipline_history:{uid}", lambda: summarize_stop_discipline_history(user=request.user))
+    stop_discipline_trends = _cached(f"dash:stop_discipline_trends:{uid}", lambda: summarize_stop_discipline_trends(user=request.user))
+    stop_policy_timeliness = _cached(f"dash:stop_policy_timeliness:{uid}", lambda: summarize_stop_policy_timeliness(user=request.user))
+    stop_policy_exception_trends = _cached(f"dash:stop_policy_exception_trends:{uid}", lambda: summarize_stop_policy_exception_trends(user=request.user))
+    account_retention_override_posture = _cached(f"dash:account_retention_override_posture:{uid}", lambda: summarize_account_retention_override_posture(user=request.user))
+    account_retention_template_drift = _cached(f"dash:account_retention_template_drift:{uid}", lambda: summarize_account_retention_template_drift(user=request.user))
+    evidence_lifecycle_automation = _cached(f"dash:evidence_lifecycle_automation:{uid}", lambda: summarize_evidence_lifecycle_automation(user=request.user))
+    portfolio_health = _cached(f"dash:portfolio_health:{uid}", lambda: summarize_portfolio_health_score(user=request.user))
+    portfolio_health_history = _cached(f"dash:portfolio_health_history:{uid}", lambda: summarize_portfolio_health_history(user=request.user, limit=6))
     risk_profile = UserRiskProfile.objects.filter(user=request.user).first()
     correlation_context = build_signal_correlation_context(user=request.user, risk_profile=risk_profile)
     top_opportunity_guardrails = {}
