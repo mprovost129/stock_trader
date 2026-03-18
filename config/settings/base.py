@@ -44,7 +44,7 @@ SECRET_KEY = os.getenv(
 )
 
 # Environment-specific modules should override this.
-DEBUG = False
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
 
 def _split_csv_env(value: str) -> list[str]:
