@@ -33,6 +33,9 @@ staticfiles/
 Thumbs.db
 *.dmg
 .dmg
+.csv
+*.csv
+
 
 # IDE
 .vscode/

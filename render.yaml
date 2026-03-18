@@ -39,7 +39,7 @@ services:
     name: stock-trader-scheduler
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python manage.py run_scheduler --username mprov --watchlist Default --max-symbols 25 --throttle-seconds 12
+    startCommand: python manage.py run_scheduler --username mprov --watchlist Default --max-symbols 25 --throttle-seconds 12 --iterations 0
     autoDeploy: true
     envVars:
       - key: DJANGO_SETTINGS_MODULE
