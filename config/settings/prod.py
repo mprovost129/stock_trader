@@ -36,12 +36,16 @@ CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(csrf_from_env))
 
 database_url = (os.getenv("DATABASE_URL") or "").strip()
 if database_url:
-	DATABASES["default"] = dj_database_url.parse(
+	db_config = dj_database_url.parse(
 		database_url,
 		conn_max_age=int(os.getenv("DJANGO_DB_CONN_MAX_AGE", "600")),
 		conn_health_checks=True,
 		ssl_require=_env_bool("DJANGO_DB_SSL_REQUIRE", True),
 	)
+	db_schema = (os.getenv("DJANGO_DB_SCHEMA") or "").strip()
+	if db_schema:
+		db_config.setdefault("OPTIONS", {})["options"] = f"-c search_path={db_schema},public"
+	DATABASES["default"] = db_config
 else:
 	use_render_disk_sqlite = _env_bool("DJANGO_USE_RENDER_DISK_SQLITE", True)
 	render_disk_mount = (os.getenv("RENDER_DISK_MOUNT_PATH") or "").strip()

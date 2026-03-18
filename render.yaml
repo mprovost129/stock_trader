@@ -34,6 +34,8 @@ services:
         value: "12"
       - key: SCHEDULER_MAX_SYMBOLS_PER_CYCLE
         value: "25"
+      - key: DJANGO_DB_SCHEMA
+        value: stock_trader   # isolates all tables in their own schema; other apps keep using public
 
   - type: worker
     name: stock-trader-scheduler
@@ -64,6 +66,8 @@ services:
         value: "12"
       - key: SCHEDULER_MAX_SYMBOLS_PER_CYCLE
         value: "25"
+      - key: DJANGO_DB_SCHEMA
+        value: stock_trader
 
 databases:
   - name: stock-trader-db
