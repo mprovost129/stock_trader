@@ -1,0 +1,118 @@
+{
+  "provider_cooldowns": {
+    "AIG:auto": {
+      "reason": "rate_limited",
+      "until": "2026-03-17T20:42:34.202468+00:00"
+    },
+    "AIZ:auto": {
+      "reason": "rate_limited",
+      "until": "2026-03-17T20:42:34.640981+00:00"
+    },
+    "AJG:auto": {
+      "reason": "rate_limited",
+      "until": "2026-03-17T20:42:35.134641+00:00"
+    },
+    "AKAM:auto": {
+      "reason": "rate_limited",
+      "until": "2026-03-17T20:42:35.600501+00:00"
+    },
+    "ALB:auto": {
+      "reason": "rate_limited",
+      "until": "2026-03-17T20:42:36.058019+00:00"
+    },
+    "ALGN:auto": {
+      "reason": "rate_limited",
+      "until": "2026-03-17T20:42:36.454438+00:00"
+    },
+    "ALL:auto": {
+      "reason": "rate_limited",
+      "until": "2026-03-17T20:42:36.926993+00:00"
+    },
+    "ALLE:auto": {
+      "reason": "rate_limited",
+      "until": "2026-03-17T20:42:37.372107+00:00"
+    },
+    "AMAT:auto": {
+      "reason": "rate_limited",
+      "until": "2026-03-17T20:42:37.788916+00:00"
+    },
+    "AMCR:auto": {
+      "reason": "rate_limited",
+      "until": "2026-03-17T20:42:38.259988+00:00"
+    },
+    "AMD:auto": {
+      "reason": "rate_limited",
+      "until": "2026-03-17T20:42:38.688195+00:00"
+    },
+    "AME:auto": {
+      "reason": "rate_limited",
+      "until": "2026-03-17T20:42:39.261338+00:00"
+    },
+    "AMGN:auto": {
+      "reason": "rate_limited",
+      "until": "2026-03-17T20:42:39.741539+00:00"
+    },
+    "AMP:auto": {
+      "reason": "rate_limited",
+      "until": "2026-03-17T20:42:40.250178+00:00"
+    },
+    "AMT:auto": {
+      "reason": "rate_limited",
+      "until": "2026-03-17T20:42:40.660487+00:00"
+    },
+    "AMZN:auto": {
+      "reason": "rate_limited",
+      "until": "2026-03-17T20:42:41.101644+00:00"
+    },
+    "ANET:auto": {
+      "reason": "rate_limited",
+      "until": "2026-03-17T20:42:41.537997+00:00"
+    },
+    "AON:auto": {
+      "reason": "rate_limited",
+      "until": "2026-03-17T20:42:41.940818+00:00"
+    },
+    "AOS:auto": {
+      "reason": "rate_limited",
+      "until": "2026-03-17T20:42:42.357810+00:00"
+    },
+    "APA:auto": {
+      "reason": "rate_limited",
+      "until": "2026-03-17T20:42:42.777916+00:00"
+    },
+    "APD:auto": {
+      "reason": "rate_limited",
+      "until": "2026-03-17T20:43:00.123417+00:00"
+    }
+  },
+  "unsupported_crypto": {
+    "CC": {
+      "marked_at": "2026-03-16T14:40:24.032351+00:00",
+      "reason": "404 Client Error: Not Found for url: https://api.exchange.coinbase.com/products/CC-USD/candles?granularity=86400"
+    },
+    "LEO": {
+      "marked_at": "2026-03-16T15:24:22.628024+00:00",
+      "reason": "404 Client Error: Not Found for url: https://api.exchange.coinbase.com/products/LEO-USD/candles?granularity=86400"
+    },
+    "TRX": {
+      "marked_at": "2026-03-16T16:01:17.510751+00:00",
+      "reason": "404 Client Error: Not Found for url: https://api.exchange.coinbase.com/products/TRX-USD/candles?granularity=86400"
+    },
+    "USD": {
+      "marked_at": "2026-03-16T16:06:48.944648+00:00",
+      "reason": "404 Client Error: Not Found for url: https://api.exchange.coinbase.com/products/USD-USD/candles?granularity=86400"
+    },
+    "USDC": {
+      "marked_at": "2026-03-16T16:07:01.401217+00:00",
+      "reason": "404 Client Error: Not Found for url: https://api.exchange.coinbase.com/products/USDC-USD/candles?granularity=86400"
+    },
+    "USDE": {
+      "marked_at": "2026-03-16T16:07:13.862544+00:00",
+      "reason": "404 Client Error: Not Found for url: https://api.exchange.coinbase.com/products/USDE-USD/candles?granularity=86400"
+    },
+    "XMR": {
+      "marked_at": "2026-03-16T16:14:22.945531+00:00",
+      "reason": "404 Client Error: Not Found for url: https://api.exchange.coinbase.com/products/XMR-USD/candles?granularity=86400"
+    }
+  }
+}

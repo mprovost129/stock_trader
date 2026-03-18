@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block title %}Portfolio Health Score{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h1 class="h3 mb-1">Portfolio Health Score</h1>
+    <div class="text-muted small">A weighted operator score that rolls account posture, drawdown stress, stop discipline, and reconciliation debt into one review surface.</div>
+  </div>
+  <div class="d-flex gap-2">
+    <form method="post" class="d-inline">
+      {% csrf_token %}
+      <input type="hidden" name="save_portfolio_health_snapshot" value="1">
+      <button class="btn btn-sm btn-primary">Save snapshot</button>
+    </form>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:home' %}">Dashboard</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:ops_command_center' %}">Ops</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:risk_settings' %}">Allocation Controls</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <div class="small text-muted">Overall health score</div>
+      <div class="display-4 fw-semibold">{{ portfolio_health.overall_score }}</div>
+      <div class="mt-2">
+        {% if portfolio_health.overall_grade_code == "CRITICAL" %}<span class="badge text-bg-danger">{{ portfolio_health.overall_grade_label }}</span>
+        {% elif portfolio_health.overall_grade_code == "ACTION" %}<span class="badge text-bg-danger">{{ portfolio_health.overall_grade_label }}</span>
+        {% elif portfolio_health.overall_grade_code == "WATCH" %}<span class="badge text-bg-warning">{{ portfolio_health.overall_grade_label }}</span>
+        {% elif portfolio_health.overall_grade_code == "GOOD" %}<span class="badge text-bg-primary">{{ portfolio_health.overall_grade_label }}</span>
+        {% else %}<span class="badge text-bg-success">{{ portfolio_health.overall_grade_label }}</span>{% endif %}
+      </div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <div class="small text-muted">Accounts needing attention</div>
+      <div class="display-6 fw-semibold">{{ portfolio_health.attention_count }}</div>
+      <div class="small text-muted mt-2">{{ portfolio_health.urgent_count }} urgent account score{% if portfolio_health.urgent_count != 1 %}s{% endif %}</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <div class="small text-muted">Weakest account</div>
+      {% if portfolio_health.weakest_account %}
+        <div class="fw-semibold fs-5">{{ portfolio_health.weakest_account.account_label }}</div>
+        <div class="small text-muted mt-2">Score {{ portfolio_health.weakest_account.score }} · {{ portfolio_health.weakest_account.grade_label }}</div>
+      {% else %}
+        <div class="fw-semibold fs-5">No accounts yet</div>
+      {% endif %}
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <div class="small text-muted">Snapshot trend</div>
+      {% if portfolio_health_history.latest %}
+        <div class="fw-semibold fs-5">{{ portfolio_health_history.trend|title }}</div>
+        <div class="small text-muted mt-2">
+          Latest saved {{ portfolio_health_history.latest.created_at|date:"Y-m-d H:i" }}
+          {% if portfolio_health_history.score_delta is not None %}· Δ {{ portfolio_health_history.score_delta }}{% endif %}
+        </div>
+      {% else %}
+        <div class="fw-semibold fs-5">No snapshots yet</div>
+        <div class="small text-muted mt-2">Save a baseline so future drift is visible.</div>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h2 class="h5 mb-3">Portfolio-wide next actions</h2>
+    {% if portfolio_health.overall_actions %}
+      <ul class="mb-0">
+        {% for item in portfolio_health.overall_actions %}
+          <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="small text-muted">No portfolio-wide action is currently highlighted.</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <h2 class="h5 mb-1">Health snapshot history</h2>
+        <div class="small text-muted">Saved checkpoints make score deterioration visible instead of relying on memory.</div>
+      </div>
+    </div>
+    {% if portfolio_health_history.snapshots %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>Saved</th><th>Score</th><th>Attention</th><th>Urgent</th><th>Weakest account</th></tr></thead>
+          <tbody>
+            {% for snap in portfolio_health_history.snapshots %}
+              <tr>
+                <td>{{ snap.created_at|date:"Y-m-d H:i" }}</td>
+                <td><span class="fw-semibold">{{ snap.overall_score }}</span><div class="small text-muted">{{ snap.overall_grade_label|default:snap.overall_grade_code }}</div></td>
+                <td>{{ snap.attention_count }}</td>
+                <td>{{ snap.urgent_count }}</td>
+                <td>{% if snap.weakest_account_label %}{{ snap.weakest_account_label }}{% if snap.weakest_account_score is not None %} ({{ snap.weakest_account_score }}){% endif %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="small text-muted">No saved snapshots yet. Use <strong>Save snapshot</strong> to establish a baseline before or after major review sessions.</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <h2 class="h5 mb-1">Account scorecard</h2>
+        <div class="small text-muted">Scores are reduced by exposure posture problems, drawdown stress, stop-guardrail debt, sell/review queue pressure, and broker reconciliation drift.</div>
+      </div>
+      <a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:holdings' %}?status=OPEN">Open holdings</a>
+    </div>
+    {% if portfolio_health.rows %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Account</th>
+              <th>Score</th>
+              <th>Posture stack</th>
+              <th>Debt</th>
+              <th>Largest / worst</th>
+              <th>Next actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in portfolio_health.rows %}
+              <tr>
+                <td>
+                  <div class="fw-semibold">{{ row.account_label }}</div>
+                  <div class="small text-muted">${{ row.tracked_market_value|floatformat:2 }} tracked</div>
+                </td>
+                <td>
+                  <div class="fw-semibold">{{ row.score }}</div>
+                  {% if row.grade_code == "CRITICAL" %}<span class="badge text-bg-danger">Critical</span>
+                  {% elif row.grade_code == "ACTION" %}<span class="badge text-bg-danger">Action needed</span>
+                  {% elif row.grade_code == "WATCH" %}<span class="badge text-bg-warning">Watch</span>
+                  {% elif row.grade_code == "GOOD" %}<span class="badge text-bg-primary">Working</span>
+                  {% else %}<span class="badge text-bg-success">Stable</span>{% endif %}
+                </td>
+                <td>
+                  <div class="small">Risk: {{ row.risk_posture|default:"—" }}</div>
+                  <div class="small">Drawdown: {{ row.drawdown_posture|default:"—" }}</div>
+                  <div class="small">Stops: {{ row.stop_posture|default:"—" }}</div>
+                  <div class="small">Queue: {{ row.queue_posture|default:"—" }}</div>
+                </td>
+                <td>
+                  <div class="small {% if row.sell_now_count %}text-danger{% else %}text-muted{% endif %}">{{ row.sell_now_count }} sell-now</div>
+                  <div class="small {% if row.missing_stop_count or row.stop_too_wide_count %}text-danger{% else %}text-muted{% endif %}">{{ row.missing_stop_count }} missing stop · {{ row.stop_too_wide_count }} wide</div>
+                  <div class="small {% if row.unresolved_count or row.missing_from_latest_import %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.unresolved_count }} unresolved · {{ row.missing_from_latest_import }} missing import</div>
+                </td>
+                <td>
+                  <div class="small">{% if row.largest_position %}Largest: {{ row.largest_position.position.instrument.symbol }}{% else %}<span class="text-muted">Largest: —</span>{% endif %}</div>
+                  <div class="small">{% if row.worst_snapshot %}Worst: {{ row.worst_snapshot.position.instrument.symbol }}{% else %}<span class="text-muted">Worst: —</span>{% endif %}</div>
+                </td>
+                <td>
+                  {% for item in row.actions %}
+                    <div class="small{% if not forloop.last %} mb-1{% endif %}">{{ item }}</div>
+                  {% endfor %}
+                  <div class="mt-2"><a class="small" href="{% url 'portfolios:holdings' %}?status=OPEN&account={{ row.holdings_url_account|urlencode }}">Open account holdings</a></div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="small text-muted">No account-level health scores are available yet because there are no holdings or broker-account rows to score.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

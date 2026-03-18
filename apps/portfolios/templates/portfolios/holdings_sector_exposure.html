@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Sector Exposure{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h1 class="h3 mb-1">Sector / theme exposure</h1>
+    <div class="text-muted small">Open holdings grouped by the active watchlist sector or theme tag so concentration risk is visible in one place.</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:watchlist' %}">Manage sector tags</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}">Back to holdings</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Tracked sectors / themes</div><div class="display-6">{{ sector_exposure.sector_count }}</div></div></div></div>
+  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Held market value</div><div class="display-6">${{ sector_exposure.total_market_value }}</div></div></div></div>
+  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Over sector cap</div><div class="display-6">{{ sector_exposure.over_cap_count }}</div><div class="small text-muted mt-2">{% if sector_exposure.max_sector_weight_pct is not None %}Cap {{ sector_exposure.max_sector_weight_pct }}%{% else %}No cap set{% endif %}</div></div></div></div>
+  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Near sector cap</div><div class="display-6">{{ sector_exposure.near_cap_count }}</div><div class="small text-muted mt-2">{% if sector_exposure.concentration_warning_buffer_pct is not None %}Warn {{ sector_exposure.concentration_warning_buffer_pct }}% before cap{% else %}—{% endif %}</div></div></div></div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-4"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Unassigned holdings</div><div class="display-6">{{ sector_exposure.unassigned_count }}</div><div class="small text-muted mt-2">Assign sector/theme tags from Watchlist symbol edit</div></div></div></div>
+  <div class="col-md-4"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Sector cap target</div><div class="display-6">{% if sector_exposure.max_sector_weight_pct is not None %}{{ sector_exposure.max_sector_weight_pct }}%{% else %}—{% endif %}</div></div></div></div>
+  <div class="col-md-4"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Top sector</div><div class="display-6">{% if sector_exposure.top_sector %}{{ sector_exposure.top_sector.sector }}{% else %}—{% endif %}</div><div class="small text-muted mt-2">{% if sector_exposure.top_sector and sector_exposure.top_sector.weight_pct is not None %}{{ sector_exposure.top_sector.weight_pct }}% of held value{% else %}—{% endif %}</div></div></div></div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    {% if sector_exposure.rows %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>Sector / theme</th><th>Holdings</th><th>Market value</th><th>Weight</th><th>Cap posture</th><th>Headroom</th><th>Unrealized P&amp;L</th><th>Largest positions</th></tr></thead>
+          <tbody>
+            {% for row in sector_exposure.rows %}
+              <tr>
+                <td class="fw-semibold">{{ row.sector }}</td>
+                <td>{{ row.count }}</td>
+                <td>${{ row.market_value }}</td>
+                <td>{% if row.weight_pct is not None %}{{ row.weight_pct }}%{% else %}—{% endif %}</td>
+                <td>
+                  {% if row.cap_posture == "OVER" %}<span class="badge text-bg-danger">Over</span>
+                  {% elif row.cap_posture == "NEAR" %}<span class="badge text-bg-warning">Near</span>
+                  {% else %}<span class="badge text-bg-success">OK</span>{% endif %}
+                </td>
+                <td>{% if row.cap_headroom_pct is not None %}{{ row.cap_headroom_pct }}%{% else %}—{% endif %}</td>
+                <td>${{ row.unrealized_pnl }}</td>
+                <td class="small">
+                  {% for item in row.top_symbols %}
+                    <a href="{% url 'portfolios:holding_detail' item.id %}">{{ item.symbol }}</a>
+                    <span class="text-muted">(${{ item.market_value }}, {% if item.weight_pct is not None %}{{ item.weight_pct }}%{% else %}—{% endif %} of sector)</span>{% if not forloop.last %}<br>{% endif %}
+                  {% empty %}
+                    <span class="text-muted">—</span>
+                  {% endfor %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="text-muted">No open holdings yet.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

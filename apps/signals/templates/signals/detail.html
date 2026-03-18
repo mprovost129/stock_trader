@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+
+{% block title %}Signal {{ signal.instrument.symbol }}{% endblock %}
+
+{% block content %}
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h1 class="h3 mb-1">{{ signal.instrument.symbol }} — {{ signal.strategy.name }}</h1>
+      <div class="text-muted small">{{ signal.generated_at|date:"Y-m-d H:i" }} • {{ signal.timeframe }} • {{ signal.direction }} • {{ signal.signal_label|default:signal.signal_kind }} • {{ signal.status }}</div>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}">All signals</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:home' %}">Dashboard</a>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          <h2 class="h5">Rationale</h2>
+          <div class="small text-muted mb-2">Signal type: {{ signal.signal_label|default:signal.signal_kind }} • Score: {{ signal.score|default:"—" }}</div>
+          <p class="mb-3">{{ signal.rationale|default:"(none)" }}</p>
+          {% if signal.score_components %}
+            <h3 class="h6">Opportunity score breakdown</h3>
+            <ul class="list-group list-group-flush mb-0">
+              {% for key, value in signal.score_components.items %}
+                <li class="list-group-item d-flex justify-content-between px-0"><span>{{ key|title }}</span><span>{{ value }}</span></li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          <h2 class="h5">Review actions</h2>
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            <form method="post" action="{% url 'signals:mark_reviewed' signal.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-primary">Mark reviewed</button></form>
+            <form method="post" action="{% url 'signals:skip_signal' signal.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary">Skip signal</button></form>
+            {% if not paper_trade %}
+              <form method="post" action="{% url 'signals:open_paper_trade' signal.pk %}">{% csrf_token %}<button class="btn btn-sm btn-success">Open paper trade</button></form>
+            {% endif %}
+            <a class="btn btn-sm btn-primary" href="{% url 'journal:new_for_signal' signal.pk %}">Record decision (Yes/No)</a>
+          </div>
+          <ul class="list-group list-group-flush mb-0">
+            {% for label, ok in checklist %}
+              <li class="list-group-item d-flex justify-content-between px-0">
+                <span>{{ label }}</span>
+                <span>{% if ok %}✅{% else %}⚠️{% endif %}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h2 class="h5">Paper trade & lifecycle management</h2>
+          {% if paper_trade %}
+            <div class="row g-3 mb-3">
+              <div class="col-md-6">
+                <dl class="row mb-0 small">
+                  <dt class="col-5">Status</dt><dd class="col-7">{{ paper_trade.status }}</dd>
+                  <dt class="col-5">Lifecycle</dt><dd class="col-7">{{ paper_trade.lifecycle_stage }}</dd>
+                  <dt class="col-5">Entry</dt><dd class="col-7">{{ paper_trade.entry_price }}</dd>
+                  <dt class="col-5">Last price</dt><dd class="col-7">{{ paper_trade.last_price|default:"—" }}</dd>
+                  <dt class="col-5">Opened</dt><dd class="col-7">{{ paper_trade.entry_time|date:"Y-m-d H:i" }}</dd>
+                  <dt class="col-5">Qty</dt><dd class="col-7">{{ paper_trade.quantity|default:"—" }}</dd>
+                  <dt class="col-5">PnL</dt><dd class="col-7">{{ paper_trade.pnl_amount|default:"—" }} {% if paper_trade.pnl_pct %}({{ paper_trade.pnl_pct }}%){% endif %}</dd>
+                </dl>
+              </div>
+              <div class="col-md-6">
+                <dl class="row mb-0 small">
+                  <dt class="col-6">Active stop</dt><dd class="col-6">{{ paper_trade.active_stop_price|default:"—" }}</dd>
+                  <dt class="col-6">Active target</dt><dd class="col-6">{{ paper_trade.active_target_price|default:"—" }}</dd>
+                  <dt class="col-6">Trailing stop %</dt><dd class="col-6">{{ paper_trade.trailing_stop_pct|default:"—" }}</dd>
+                  <dt class="col-6">High seen</dt><dd class="col-6">{{ paper_trade.highest_price_seen|default:"—" }}</dd>
+                  <dt class="col-6">Low seen</dt><dd class="col-6">{{ paper_trade.lowest_price_seen|default:"—" }}</dd>
+                  <dt class="col-6">Closed reason</dt><dd class="col-6">{{ paper_trade.closed_reason|default:"—" }}</dd>
+                </dl>
+              </div>
+            </div>
+            {% if lifecycle_snapshot %}
+              <div class="alert alert-info small">
+                <strong>Lifecycle sync:</strong> {{ lifecycle_snapshot.headline }}.
+              </div>
+            {% endif %}
+            {% if paper_trade.status == 'OPEN' %}
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <form method="post" action="{% url 'signals:sync_paper_trade' paper_trade.id %}">{% csrf_token %}<button class="btn btn-sm btn-outline-primary">Sync lifecycle now</button></form>
+              </div>
+              <form method="post" action="{% url 'signals:update_paper_trade_management' paper_trade.id %}" class="row g-2 align-items-end mb-3">
+                {% csrf_token %}
+                <div class="col-md-3">
+                  <label class="form-label small">Active stop</label>
+                  <input class="form-control form-control-sm" type="text" name="active_stop_price" value="{{ paper_trade.active_stop_price|default:'' }}">
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label small">Active target</label>
+                  <input class="form-control form-control-sm" type="text" name="active_target_price" value="{{ paper_trade.active_target_price|default:'' }}">
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label small">Trailing stop %</label>
+                  <input class="form-control form-control-sm" type="text" name="trailing_stop_pct" value="{{ paper_trade.trailing_stop_pct|default:'' }}" placeholder="e.g. 3.5">
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label small">Management note</label>
+                  <input class="form-control form-control-sm" type="text" name="management_note" placeholder="why this changed">
+                </div>
+                <div class="col-12">
+                  <button class="btn btn-sm btn-outline-dark">Save trade management</button>
+                </div>
+              </form>
+              <form method="post" action="{% url 'signals:close_paper_trade' paper_trade.id %}" class="row g-2 align-items-end">
+                {% csrf_token %}
+                <div class="col-md-3">
+                  <label class="form-label small">Exit price (optional)</label>
+                  <input class="form-control form-control-sm" type="text" name="exit_price" placeholder="Latest price if blank">
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label small">Close reason</label>
+                  <select class="form-select form-select-sm" name="closed_reason">
+                    <option value="MANUAL">Manual</option>
+                    <option value="STOP">Stop</option>
+                    <option value="TARGET_2">Target 2</option>
+                    <option value="REVERSAL">Reversal</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small">Notes (optional)</label>
+                  <input class="form-control form-control-sm" type="text" name="notes" placeholder="Why you closed it">
+                </div>
+                <div class="col-md-2">
+                  <button class="btn btn-sm btn-danger w-100">Close trade</button>
+                </div>
+              </form>
+            {% endif %}
+            <hr>
+            <h3 class="h6">Recent position alerts</h3>
+            {% if position_alerts %}
+              <ul class="list-group list-group-flush mb-0">
+                {% for item in position_alerts %}
+                  <li class="list-group-item px-0">
+                    <div class="d-flex justify-content-between"><span>{{ item.alert_type }}</span><span class="small text-muted">{{ item.created_at|date:"Y-m-d H:i" }}</span></div>
+                    <div class="small text-muted">{{ item.status }} • {{ item.reason|default:"—" }}</div>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <div class="text-muted">No position alerts yet for this trade.</div>
+            {% endif %}
+          {% else %}
+            <div class="text-muted mb-2">No paper trade is attached yet. Open one if you want ongoing deterioration / reversal alerts while you manage the trade manually.</div>
+            <form method="post" action="{% url 'signals:open_paper_trade' signal.pk %}">{% csrf_token %}<button class="btn btn-sm btn-success">Open paper trade from this signal</button></form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          <h2 class="h5">Trade Plan</h2>
+          {% if signal.trade_plan %}
+            <dl class="row mb-0">
+              <dt class="col-5">Entry</dt><dd class="col-7">{{ signal.trade_plan.entry_price|default:"—" }}</dd>
+              <dt class="col-5">Stop</dt><dd class="col-7">{{ signal.trade_plan.stop_price|default:"—" }}</dd>
+              <dt class="col-5">Target 1</dt><dd class="col-7">{{ signal.trade_plan.target_1|default:"—" }}</dd>
+              <dt class="col-5">Target 2</dt><dd class="col-7">{{ signal.trade_plan.target_2|default:"—" }}</dd>
+              <dt class="col-5">Suggested Qty</dt><dd class="col-7">{{ signal.trade_plan.suggested_qty|default:"—" }}</dd>
+            </dl>
+            {% if signal.trade_plan.notes %}<hr /><div class="small text-muted">{{ signal.trade_plan.notes }}</div>{% endif %}
+          {% else %}
+            <div class="text-muted">No trade plan computed yet.</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          <h2 class="h5">Alert eligibility</h2>
+          {% if alert_explanation %}
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <div class="text-muted small">Current policy decision</div>
+              {% if alert_explanation.eligible %}<span class="badge text-bg-success">eligible</span>{% else %}<span class="badge text-bg-secondary">{{ alert_explanation.reason }}</span>{% endif %}
+            </div>
+            <div class="small mb-2">
+              Score: <strong>{{ alert_explanation.score_value|default:"n/a" }}</strong>{% if alert_explanation.score_value %}/100{% endif %}
+              · Threshold: <strong>{{ alert_explanation.score_threshold|default:"n/a" }}</strong>{% if alert_explanation.score_threshold %}/100{% endif %}
+              · Gap:
+              <strong class="{% if alert_explanation.score_gap >= 0 %}text-success{% else %}text-danger{% endif %}">{{ alert_explanation.score_gap|default:"n/a"|floatformat:2 }}</strong>
+            </div>
+            <ul class="list-group list-group-flush mb-0">
+              <li class="list-group-item d-flex justify-content-between px-0"><span>Signal age</span><span>{{ alert_explanation.age_minutes|default:"—" }} / {{ alert_explanation.freshness_limit_minutes|default:"—" }} min</span></li>
+              <li class="list-group-item d-flex justify-content-between px-0"><span>Session window</span><span>{% if signal.instrument.asset_class == 'CRYPTO' %}24/7{% else %}{{ alert_explanation.session_window }}{% endif %}</span></li>
+              <li class="list-group-item d-flex justify-content-between px-0"><span>State-change only</span><span>{% if alert_explanation.state_change_only %}On{% else %}Off{% endif %}</span></li>
+              <li class="list-group-item d-flex justify-content-between px-0"><span>Duplicate already sent</span><span>{% if alert_explanation.duplicate_sent %}Yes{% else %}No{% endif %}</span></li>
+              <li class="list-group-item d-flex justify-content-between px-0"><span>Cooldown active</span><span>{% if alert_explanation.cooldown_hit %}Yes{% else %}No{% endif %}</span></li>
+              <li class="list-group-item d-flex justify-content-between px-0"><span>Daily cap hit</span><span>{% if alert_explanation.daily_cap_hit %}Yes{% else %}No{% endif %}</span></li>
+            </ul>
+            {% if not alert_explanation.eligible and alert_explanation.reason == 'low_score' %}
+              <div class="alert alert-warning small mt-3 mb-0">This signal would alert if the relevant threshold were lowered to {{ alert_explanation.score_value|floatformat:2 }}/100 or below.</div>
+            {% endif %}
+          {% else %}
+            <div class="text-muted">No trade plan is attached yet, so alert eligibility cannot be evaluated.</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          <h2 class="h5">Outcome tracking</h2>
+          {% if outcome %}
+            <dl class="row mb-0">
+              <dt class="col-5">Status</dt><dd class="col-7">{{ outcome.status }}</dd>
+              <dt class="col-5">Label</dt><dd class="col-7">{{ outcome.outcome_label|default:"—" }}</dd>
+              <dt class="col-5">Lookahead</dt><dd class="col-7">{{ outcome.bars_observed }} / {{ outcome.lookahead_bars }} bars</dd>
+              <dt class="col-5">Return %</dt><dd class="col-7">{{ outcome.return_pct|default:"—" }}</dd>
+              <dt class="col-5">MFE %</dt><dd class="col-7">{{ outcome.max_favorable_excursion_pct|default:"—" }}</dd>
+              <dt class="col-5">MAE %</dt><dd class="col-7">{{ outcome.max_adverse_excursion_pct|default:"—" }}</dd>
+              <dt class="col-5">Target 1 / 2</dt><dd class="col-7">{{ outcome.target_1_hit|yesno:"hit,not hit" }} / {{ outcome.target_2_hit|yesno:"hit,not hit" }}</dd>
+              <dt class="col-5">Stop</dt><dd class="col-7">{{ outcome.stop_hit|yesno:"hit,not hit" }}</dd>
+            </dl>
+            {% if outcome.evaluation_notes %}<hr><div class="small text-muted">{{ outcome.evaluation_notes }}</div>{% endif %}
+          {% else %}
+            <div class="text-muted">No outcome evaluation yet.</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          <h2 class="h5">Latest journal decision</h2>
+          {% if latest_journal %}
+            <div><strong>{{ latest_journal.decision }}</strong> — {{ latest_journal.outcome }}</div>
+            <div class="small text-muted mb-2">{{ latest_journal.decided_at|date:"Y-m-d H:i" }}</div>
+            <div class="small">{{ latest_journal.notes|default:"No notes." }}</div>
+          {% else %}
+            <div class="text-muted">No journal decision recorded yet.</div>
+          {% endif %}
+        </div>
+      </div>
+
+
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          <h2 class="h5">Watchlist actions</h2>
+          <div class="text-muted small mb-3">Use the active watchlist for names you want to keep scanning even if you are not taking the signal right now.</div>
+          {% if in_watchlist %}
+            <div class="d-flex align-items-center gap-2">
+              <span class="badge text-bg-success">Already in watchlist</span>
+              <form method="post" action="{% url 'portfolios:watchlist_remove_instrument' signal.instrument_id %}">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{% url 'signals:detail' signal.pk %}">
+                <button class="btn btn-sm btn-outline-danger">Remove from watchlist</button>
+              </form>
+            </div>
+          {% else %}
+            <form method="post" action="{% url 'portfolios:watchlist_add_instrument' signal.instrument_id %}">
+              {% csrf_token %}
+              <input type="hidden" name="next" value="{% url 'signals:detail' signal.pk %}">
+              <button class="btn btn-sm btn-outline-primary">Add {{ signal.instrument.symbol }} to watchlist</button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h2 class="h5">Alert deliveries</h2>
+          {% if alert_deliveries %}
+            <ul class="list-group list-group-flush mb-0">
+              {% for delivery in alert_deliveries %}
+                <li class="list-group-item px-0">
+                  <div class="d-flex justify-content-between">
+                    <span>{{ delivery.status }}</span>
+                    <span class="small text-muted">{{ delivery.created_at|date:"Y-m-d H:i" }}</span>
+                  </div>
+                  <div class="small text-muted">{{ delivery.reason|default:"—" }}</div>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="text-muted">No alert delivery history for this signal.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

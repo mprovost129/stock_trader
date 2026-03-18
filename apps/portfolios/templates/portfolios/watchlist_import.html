@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Import {{ watchlist.name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h1 class="h3 mb-1">Import {{ watchlist.name }} symbols</h1>
+    <div class="text-muted small">Bulk-load the active watchlist from a CSV or pasted symbol list so the scan universe stays easy to maintain.</div>
+  </div>
+  <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:watchlist' %}">Back</a>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Upload or paste symbols</h2>
+        <div class="small text-muted mb-3">Active target watchlist: {{ watchlist.name }}</div>
+        <form method="post" enctype="multipart/form-data">
+          {% csrf_token %}
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.csv_file.id_for_label }}">CSV file</label>
+            {{ form.csv_file }}
+            {% if form.csv_file.help_text %}<div class="form-text">{{ form.csv_file.help_text }}</div>{% endif %}
+            {% for error in form.csv_file.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.symbols_text.id_for_label }}">Or paste symbols</label>
+            {{ form.symbols_text }}
+            {% if form.symbols_text.help_text %}<div class="form-text">{{ form.symbols_text.help_text }}</div>{% endif %}
+            {% for error in form.symbols_text.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+          <div class="form-check mb-3">
+            {{ form.replace_missing }}
+            <label class="form-check-label" for="{{ form.replace_missing.id_for_label }}">Sync {{ watchlist.name }} to exactly this import</label>
+            {% if form.replace_missing.help_text %}<div class="form-text">{{ form.replace_missing.help_text }}</div>{% endif %}
+          </div>
+          <button class="btn btn-primary">Preview import</button>
+        </form>
+        <hr>
+        <div class="small text-muted">Accepted header</div>
+        <code>{{ sample_headers }}</code>
+        <div class="small text-muted mt-2">Also accepted: ticker or instrument. One-column files and pasted symbol lists work too.</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Preview</h2>
+        {% if parse_errors %}
+          {% for error in parse_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+        {% endif %}
+        {% if preview_rows %}
+          {% if reconciliation %}
+            <div class="row g-2 mb-3">
+              <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Current active</div><div class="fw-semibold">{{ reconciliation.active_count }}</div></div></div>
+              <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Matched</div><div class="fw-semibold">{{ reconciliation.matched_count }}</div></div></div>
+              <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">New</div><div class="fw-semibold">{{ reconciliation.new_count }}</div></div></div>
+              <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Missing</div><div class="fw-semibold">{{ reconciliation.missing_count }}</div></div></div>
+            </div>
+            {% if reconciliation.missing_symbols %}
+              <div class="alert alert-warning py-2">
+                <div class="fw-semibold small mb-1">Symbols currently active but not present in this import</div>
+                <div class="small">{{ reconciliation.missing_symbols|join:', ' }}</div>
+                <div class="small text-muted mt-1">They will only be deactivated if you leave the sync checkbox on and then confirm the import.</div>
+              </div>
+            {% endif %}
+          {% endif %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead><tr><th>Row</th><th>Symbol</th><th>Asset class</th><th>Status</th><th>Message</th></tr></thead>
+              <tbody>
+                {% for row in preview_rows %}
+                <tr>
+                  <td>{{ row.row_number }}</td>
+                  <td>{{ row.instrument_symbol|default:row.symbol }}</td>
+                  <td>{{ row.asset_class|default:"—" }}</td>
+                  <td>
+                    {% if row.status == 'ready' %}<span class="badge text-bg-success">ready</span>
+                    {% elif row.status == 'duplicate' %}<span class="badge text-bg-warning">duplicate</span>
+                    {% else %}<span class="badge text-bg-danger">error</span>{% endif %}
+                  </td>
+                  <td class="small text-muted">{{ row.message }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% if preview_ready %}
+          <form method="post" class="mt-3">
+            {% csrf_token %}
+            <input type="hidden" name="confirm_import" value="1">
+            <button class="btn btn-success">Import {{ watchlist.name }}</button>
+          </form>
+          {% else %}
+          <div class="small text-muted">Fix the rows marked error and preview the import again.</div>
+          {% endif %}
+        {% else %}
+          <div class="text-muted">Upload a CSV or paste symbols to preview the watchlist import.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

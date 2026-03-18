@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+
+{% block title %}{{ position.instrument.symbol }} Holding{% endblock %}
+
+{% block content %}
+{% if broker_apply_context %}
+<div class="alert alert-info small mb-3">
+  <div class="fw-semibold mb-1">Apply + resolve broker reconciliation</div>
+  <div>You are applying a broker reconciliation action for <strong>{{ broker_apply_context.symbol }}</strong> from run #{{ broker_apply_context.run.pk }}. Submitting one of the prefilled workflows below will also mark the mismatch resolved as <strong>{{ broker_apply_context.action_label }}</strong>.</div>
+</div>
+{% endif %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h1 class="h3 mb-1">{{ position.instrument.symbol }} holding</h1>
+    <div class="text-muted small">Review the current health of this owned position, record added buys, trim shares, or fully close it from here.</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}">Back</a>
+    <a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:holding_edit' position.pk %}">Edit</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small mb-2">Position</div>
+        <dl class="row small mb-0">
+          <dt class="col-5">Status</dt><dd class="col-7">{{ position.status }}</dd>
+          <dt class="col-5">Quantity</dt><dd class="col-7">{{ position.quantity }}</dd>
+          <dt class="col-5">Entry</dt><dd class="col-7">{{ position.average_entry_price }}</dd>
+          <dt class="col-5">Opened</dt><dd class="col-7">{{ position.opened_at }}</dd>
+          <dt class="col-5">Account</dt><dd class="col-7">{% if position.account_label %}{{ position.account_label }}{% else %}<span class="text-muted">Blended / unlabeled</span>{% endif %}</dd>
+          <dt class="col-5">Stop</dt><dd class="col-7">{{ position.stop_price|default:"—" }}</dd>
+          <dt class="col-5">Target</dt><dd class="col-7">{{ position.target_price|default:"—" }}</dd>
+          <dt class="col-5">Last</dt><dd class="col-7">{{ position.last_price|default:"—" }}</dd>
+          <dt class="col-5">PnL</dt><dd class="col-7">{% if position.pnl_pct is not None %}{{ position.pnl_pct }}% / {{ position.pnl_amount|default:"—" }}{% else %}—{% endif %}</dd>
+          <dt class="col-5">Import sync</dt><dd class="col-7">{% if position.missing_from_latest_import %}<span class="badge text-bg-warning">missing from latest import</span>{% elif position.reconciliation_resolved_at %}reviewed {{ position.reconciliation_resolved_at }}{% else %}in sync{% endif %}</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small mb-2">Current recommendation</div>
+        {% if snapshot %}
+          <div class="mb-3">
+            {% if snapshot.recommendation_code == 'SELL_NOW' %}<span class="badge text-bg-danger fs-6">{{ snapshot.recommendation_label }}</span>
+            {% elif snapshot.recommendation_code == 'REVIEW_URGENT' %}<span class="badge text-bg-warning fs-6">{{ snapshot.recommendation_label }}</span>
+            {% elif snapshot.recommendation_code == 'TRIM_OR_EXIT' %}<span class="badge text-bg-success fs-6">{{ snapshot.recommendation_label }}</span>
+            {% elif snapshot.recommendation_code == 'REVIEW' %}<span class="badge text-bg-secondary fs-6">{{ snapshot.recommendation_label }}</span>
+            {% else %}<span class="badge text-bg-success fs-6">{{ snapshot.recommendation_label }}</span>{% endif %}
+          </div>
+          <p class="mb-2">{{ snapshot.recommendation_reason }}</p>
+          <div class="small text-muted">Health status: {{ snapshot.status_label }}</div>
+          <div class="border rounded p-2 mt-3 {% if snapshot.risk_guardrail_posture == 'OVER' %}border-danger-subtle bg-danger-subtle{% elif snapshot.risk_guardrail_posture == 'NEAR' %}border-warning-subtle bg-warning-subtle{% else %}border-success-subtle bg-success-subtle{% endif %}">
+            <div class="small text-muted">Stop / risk guardrail</div>
+            <div class="fw-semibold mb-1">{{ snapshot.risk_guardrail_label|title }}</div>
+            <div class="small mb-1">{{ snapshot.risk_guardrail_reason }}</div>
+            <div class="small text-muted">Action: {{ snapshot.risk_guardrail_action }}</div>
+            {% if snapshot.stop_loss_pct is not None %}<div class="small text-muted mt-1">Entry-to-stop loss budget: {{ snapshot.stop_loss_pct }}%</div>{% endif %}
+          </div>
+          {% if snapshot.opposing_signal %}
+            <div class="alert alert-warning mt-3 mb-0 small">
+              Opposing signal detected: {{ snapshot.opposing_signal.strategy.slug }} / {{ snapshot.opposing_signal.timeframe }} / {{ snapshot.opposing_signal.generated_at }}.
+            </div>
+          {% endif %}
+        {% else %}
+          <div class="text-muted">This position is closed.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-3">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small mb-2">Action plan</div>
+        {% if snapshot %}
+          <div class="small fw-semibold text-uppercase mb-1">{{ snapshot.suggested_action_label }}</div>
+          <p class="small text-muted mb-3">{{ snapshot.suggested_action_reason }}</p>
+          {% if snapshot.suggested_action_quantity %}
+            <div class="border rounded p-2 mb-3 small">
+              <div>Suggested quantity: <strong>{{ snapshot.suggested_action_quantity }}</strong></div>
+              <div>Suggested size: <strong>{% if snapshot.suggested_action_pct is not None %}{{ snapshot.suggested_action_pct }}%{% else %}—{% endif %}</strong></div>
+            </div>
+          {% endif %}
+        {% endif %}
+        {% if position.status == 'OPEN' %}
+        <form id="record-added-buy" method="post" action="{% url 'portfolios:holding_add_shares' position.pk %}" class="mb-3">
+          {% csrf_token %}
+          {% if broker_apply_context %}
+          <input type="hidden" name="reconcile_apply_resolve" value="1">
+          <input type="hidden" name="reconcile_run_id" value="{{ broker_apply_context.run.pk }}">
+          <input type="hidden" name="reconcile_symbol" value="{{ broker_apply_context.symbol }}">
+          <input type="hidden" name="reconcile_resolution_action" value="{{ broker_apply_context.action }}">
+          {% endif %}
+          <div class="small fw-semibold text-uppercase mb-2">Record added buy</div>
+          <div class="mb-2">
+            <label class="form-label" for="id_buy_quantity">Buy quantity</label>
+            {{ add_shares_form.quantity }}
+          </div>
+          <div class="mb-2">
+            <label class="form-label" for="id_buy_price">Buy price</label>
+            {{ add_shares_form.buy_price }}
+          </div>
+          <div class="mb-2">
+            <label class="form-label" for="id_stop_price">Optional stop update</label>
+            {{ add_shares_form.stop_price }}
+            <div class="form-text">Record the buy and add or tighten the stop in one step so stop-policy timing stays auditable.</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="id_buy_notes">Notes</label>
+            {{ add_shares_form.notes }}
+          </div>
+          <button class="btn btn-outline-success w-100">Record added buy</button>
+        </form>
+        <hr>
+        <form id="record-partial-sale" method="post" action="{% url 'portfolios:holding_partial_sell' position.pk %}" class="mb-3">
+          {% csrf_token %}
+          {% if broker_apply_context %}
+          <input type="hidden" name="reconcile_apply_resolve" value="1">
+          <input type="hidden" name="reconcile_run_id" value="{{ broker_apply_context.run.pk }}">
+          <input type="hidden" name="reconcile_symbol" value="{{ broker_apply_context.symbol }}">
+          <input type="hidden" name="reconcile_resolution_action" value="{{ broker_apply_context.action }}">
+          {% endif %}
+          <div class="small fw-semibold text-uppercase mb-2">Record sale</div>
+          <div class="mb-2">
+            <label class="form-label" for="id_quantity">Sell quantity</label>
+            {{ partial_sell_form.quantity }}
+          </div>
+          <div class="mb-2">
+            <label class="form-label" for="id_sale_price">Sell price</label>
+            {{ partial_sell_form.sale_price }}
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="id_notes">Notes</label>
+            {{ partial_sell_form.notes }}
+          </div>
+          <button class="btn btn-outline-primary w-100">Record partial sale</button>
+        </form>
+        <hr>
+        <form id="transfer-account" method="post" action="{% url 'portfolios:holding_transfer_account' position.pk %}" class="mb-3">
+          {% csrf_token %}
+          <div class="small fw-semibold text-uppercase mb-2">Move / relabel account</div>
+          <div class="mb-2">
+            <label class="form-label" for="id_transfer_account_label">Account label</label>
+            {{ transfer_account_form.account_label }}
+            <div class="form-text">Leave blank to move this holding back into the blended / unlabeled book.</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="id_transfer_note">Notes</label>
+            {{ transfer_account_form.note }}
+          </div>
+          <button class="btn btn-outline-secondary w-100">Save account move</button>
+        </form>
+        <hr>
+        <form id="record-close-position" method="post" action="{% url 'portfolios:holding_close' position.pk %}">
+          {% csrf_token %}
+          {% if broker_apply_context %}
+          <input type="hidden" name="reconcile_apply_resolve" value="1">
+          <input type="hidden" name="reconcile_run_id" value="{{ broker_apply_context.run.pk }}">
+          <input type="hidden" name="reconcile_symbol" value="{{ broker_apply_context.symbol }}">
+          <input type="hidden" name="reconcile_resolution_action" value="{{ broker_apply_context.action }}">
+          {% endif %}
+          <div class="mb-3">
+            <label class="form-label" for="id_close_price">Close price</label>
+            <input class="form-control" id="id_close_price" name="close_price" placeholder="Defaults to last price" value="{{ close_form_initial.price }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="id_close_notes">Close notes</label>
+            <textarea class="form-control" id="id_close_notes" name="close_notes" rows="3">{{ close_form_initial.note }}</textarea>
+          </div>
+          <button class="btn btn-danger w-100">Close full remaining position</button>
+        </form>
+        {% else %}
+          <div class="small text-muted">Closed at {{ position.closed_at }}{% if position.close_price %} for {{ position.close_price }}{% endif %}.</div>
+          {% if position.close_notes %}<div class="small mt-2">{{ position.close_notes }}</div>{% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if position.status == 'OPEN' and position.missing_from_latest_import %}
+<div class="card shadow-sm mb-3 border-warning" id="reconciliation-review">
+  <div class="card-body">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <h2 class="h5 mb-1">Import reconciliation review</h2>
+        <div class="text-muted small">This holding was missing from the latest account CSV import. Decide whether to keep it open or close it as no longer held.</div>
+      </div>
+      <span class="badge text-bg-warning">needs review</span>
+    </div>
+    <div class="row g-3">
+      <div class="col-lg-6">
+        <form method="post" action="{% url 'portfolios:holding_resolve_reconciliation' position.pk %}">
+          {% csrf_token %}
+          <div class="mb-3">
+            <label class="form-label">Why keep it open?</label>
+            <textarea class="form-control" name="note" rows="3" placeholder="Example: broker export was incomplete; shares are still held."></textarea>
+          </div>
+          <button class="btn btn-outline-warning">Keep open and clear mismatch</button>
+        </form>
+      </div>
+      <div class="col-lg-6">
+        <form method="post" action="{% url 'portfolios:holding_close_from_reconciliation' position.pk %}">
+          {% csrf_token %}
+          <div class="mb-3">
+            <label class="form-label">Close price</label>
+            {{ reconciliation_form.close_price }}
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Close note</label>
+            <textarea class="form-control" name="note" rows="3" placeholder="Example: sold in broker already; this import confirmed it."></textarea>
+          </div>
+          <button class="btn btn-danger">Close from reconciliation</button>
+        </form>
+      </div>
+    </div>
+    {% if position.reconciliation_note %}
+      <div class="small text-muted mt-3">Last reconciliation note: {{ position.reconciliation_note }}</div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Transaction history</h2>
+        {% if recent_transactions %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>When</th><th>Type</th><th>Qty</th><th>Price</th><th>Account</th><th>Stop snapshot</th><th>Stop policy</th><th>Realized PnL</th></tr></thead>
+            <tbody>
+              {% for tx in recent_transactions %}
+              <tr>
+                <td>{{ tx.created_at }}</td>
+                <td>
+                  {{ tx.get_event_type_display }}
+                  {% if tx.risk_guardrail_posture_snapshot == 'OVER' %}<div><span class="badge text-bg-danger">Over</span></div>
+                  {% elif tx.risk_guardrail_posture_snapshot == 'NEAR' %}<div><span class="badge text-bg-warning">Near</span></div>
+                  {% elif tx.risk_guardrail_posture_snapshot == 'OK' %}<div><span class="badge text-bg-success">OK</span></div>{% endif %}
+                </td>
+                <td>{{ tx.quantity }}</td>
+                <td>{{ tx.price }}</td>
+                <td>{% if tx.account_label_snapshot %}{{ tx.account_label_snapshot }}{% else %}<span class="text-muted">Blended</span>{% endif %}</td>
+                <td>{% if tx.stop_price_snapshot is not None %}{{ tx.stop_price_snapshot }}{% else %}<span class="text-muted">None</span>{% endif %}{% if tx.risk_guardrail_reason_snapshot %}<div class="small text-muted">{{ tx.risk_guardrail_reason_snapshot }}</div>{% endif %}</td>
+                <td>
+                  {% if tx.stop_policy_status %}<div>{{ tx.stop_policy_status|title }}</div>{% else %}<span class="text-muted">—</span>{% endif %}
+                  {% if tx.stop_policy_reason_code %}<div class="small text-muted">{{ tx.get_stop_policy_reason_code_display }}</div>{% endif %}
+                  {% if tx.stop_policy_note %}<div class="small text-muted">{{ tx.stop_policy_note }}</div>{% endif %}
+                </td>
+                <td>{{ tx.realized_pnl_amount|default:"—" }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-muted">No transaction history recorded yet.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Recent holding alerts</h2>
+        {% if recent_alerts %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>When</th><th>Type</th><th>Channel</th><th>Status</th></tr></thead>
+            <tbody>
+              {% for alert in recent_alerts %}
+              <tr>
+                <td>{{ alert.created_at }}</td>
+                <td>{{ alert.alert_type }}</td>
+                <td>{{ alert.channel }}</td>
+                <td>{{ alert.status }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-muted">No alerts recorded for this holding yet.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-12">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Signals since entry</h2>
+        {% if recent_signals %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>When</th><th>Strategy</th><th>TF</th><th>Direction</th><th>Score</th></tr></thead>
+            <tbody>
+              {% for signal in recent_signals %}
+              <tr>
+                <td>{{ signal.generated_at }}</td>
+                <td>{{ signal.strategy.slug }}</td>
+                <td>{{ signal.timeframe }}</td>
+                <td>{{ signal.direction }}</td>
+                <td>{{ signal.score|default:"—" }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-muted">No non-flat signals recorded since you opened this position.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

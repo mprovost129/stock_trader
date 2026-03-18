@@ -1,0 +1,139 @@
+
+{% extends "base.html" %}
+
+{% block title %}Holdings Performance{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h1 class="h3 mb-1">Holdings Performance</h1>
+    <div class="text-muted small">See what has been realized already, what is still open, and which names are doing the most work for the portfolio.</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}">Back to holdings</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings_sector_exposure' %}">Sector exposure</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:risk_settings' %}">Allocation controls</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Realized P&amp;L</div><div class="display-6">${{ performance.total_realized_pnl }}</div><div class="small text-muted mt-2">Closed or trimmed gains/losses already recorded.</div></div></div></div>
+  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Unrealized P&amp;L</div><div class="display-6">${{ performance.total_unrealized_pnl }}</div><div class="small text-muted mt-2">{% if performance.unrealized_return_pct is not None %}{{ performance.unrealized_return_pct }}% on open cost basis{% else %}No open holdings yet{% endif %}</div></div></div></div>
+  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Realized win rate</div><div class="display-6">{% if performance.realized_win_rate is not None %}{{ performance.realized_win_rate }}%{% else %}—{% endif %}</div><div class="small text-muted mt-2">{{ performance.winning_realized_positions }} wins / {{ performance.realized_positions_count }} realized positions</div></div></div></div>
+  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Open market value</div><div class="display-6">${{ exposure.total_market_value|default:0 }}</div><div class="small text-muted mt-2">{% if exposure.net_exposure_pct is not None %}{{ exposure.net_exposure_pct }}% net exposure{% else %}No account equity set{% endif %}</div></div></div></div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Top unrealized winners</h2>
+        {% if performance.top_unrealized_winners %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>Symbol</th><th>Unrealized P&amp;L</th><th>Return %</th><th>Market value</th><th></th></tr></thead>
+            <tbody>
+              {% for item in performance.top_unrealized_winners %}
+              <tr>
+                <td>{{ item.position.instrument.symbol }}</td>
+                <td>${{ item.unrealized_pnl }}</td>
+                <td>{% if item.unrealized_pct is not None %}{{ item.unrealized_pct }}%{% else %}—{% endif %}</td>
+                <td>${{ item.market_value }}</td>
+                <td><a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holding_detail' item.position.pk %}">Open</a></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-muted">No open holdings yet.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Top unrealized losers</h2>
+        {% if performance.top_unrealized_losers %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>Symbol</th><th>Unrealized P&amp;L</th><th>Return %</th><th>Market value</th><th></th></tr></thead>
+            <tbody>
+              {% for item in performance.top_unrealized_losers %}
+              <tr>
+                <td>{{ item.position.instrument.symbol }}</td>
+                <td>${{ item.unrealized_pnl }}</td>
+                <td>{% if item.unrealized_pct is not None %}{{ item.unrealized_pct }}%{% else %}—{% endif %}</td>
+                <td>${{ item.market_value }}</td>
+                <td><a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holding_detail' item.position.pk %}">Open</a></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-muted">No open holdings yet.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Realized performance by position</h2>
+        {% if performance.top_realized_winners %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>Symbol</th><th>Realized P&amp;L</th><th>Realized %</th><th>Sold qty</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {% for item in performance.top_realized_winners %}
+              <tr>
+                <td>{{ item.position.instrument.symbol }}</td>
+                <td>${{ item.realized_pnl }}</td>
+                <td>{% if item.realized_pct is not None %}{{ item.realized_pct }}%{% else %}—{% endif %}</td>
+                <td>{{ item.realized_quantity }}</td>
+                <td>{{ item.position.get_status_display }}</td>
+                <td><a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holding_detail' item.position.pk %}">Open</a></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-muted">No partial sells or closes recorded yet.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Recent closed positions</h2>
+        {% if performance.recent_closed_positions %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>Symbol</th><th>Closed</th><th>Close price</th><th></th></tr></thead>
+            <tbody>
+              {% for position in performance.recent_closed_positions %}
+              <tr>
+                <td>{{ position.instrument.symbol }}</td>
+                <td>{{ position.closed_at|date:"Y-m-d H:i" }}</td>
+                <td>{{ position.close_price|default:"—" }}</td>
+                <td><a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holding_detail' position.pk %}">Open</a></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-muted">No closed holdings yet.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

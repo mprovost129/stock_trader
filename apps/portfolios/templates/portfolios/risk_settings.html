@@ -1,0 +1,1154 @@
+{% extends "base.html" %}
+
+{% block title %}Allocation Controls{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h1 class="h3 mb-1">Allocation Controls</h1>
+    <div class="text-muted small">Set the account size, per-trade risk, and concentration guardrails the app should use for sizing and exposure checks.</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:home' %}">Dashboard</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}">Holdings</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:ops_command_center' %}">Ops Command Center</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:portfolio_health_score' %}">Portfolio Health Score</a>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Risk profile</h2>
+        <form method="post">
+          {% csrf_token %}
+          {% for field in form %}
+            <div class="mb-3">
+              <label class="form-label">{{ field.label }}</label>
+              {{ field }}
+              {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+              {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+          {% endfor %}
+          <button class="btn btn-primary">Save allocation controls</button>
+          <div class="form-text mt-2">Net exposure, position, sector, and correlation caps are soft guardrails for daily review, not automatic forced liquidation rules.</div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <div>
+            <h2 class="h5 mb-1">Per-account retention overrides</h2>
+            <div class="small text-muted">Override evidence-retention presets for specific broker accounts without changing the global defaults.</div>
+          </div>
+          <div class="small text-muted">{{ account_retention_overrides.count }} account{{ account_retention_overrides.count|pluralize }}</div>
+        </div>
+        <div class="row g-3 mb-4">
+          <div class="col-xl-7">
+            <form method="post" class="h-100 border rounded p-3 bg-light-subtle">
+              {% csrf_token %}
+              <input type="hidden" name="save_account_retention_override" value="1">
+              {% if editing_account_retention_override %}<input type="hidden" name="override_id" value="{{ editing_account_retention_override.id }}">{% endif %}
+              <div class="fw-semibold mb-2">{% if editing_account_retention_override %}Edit account override{% else %}Create account override{% endif %}</div>
+              {% for field in account_retention_override_form %}
+                <div class="mb-3">
+                  <label class="form-label">{{ field.label }}</label>
+                  {{ field }}
+                  {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                  {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+              {% endfor %}
+              <div class="d-flex gap-2">
+                <button class="btn btn-outline-primary">{% if editing_account_retention_override %}Update override{% else %}Save account override{% endif %}</button>
+                {% if editing_account_retention_override %}
+                  <a class="btn btn-outline-secondary" href="{% url 'portfolios:risk_settings' %}">Cancel</a>
+                {% endif %}
+              </div>
+            </form>
+          </div>
+          <div class="col-xl-5">
+            <form method="post" class="h-100 border rounded p-3">
+              {% csrf_token %}
+              <input type="hidden" name="clone_account_retention_override" value="1">
+              <div class="fw-semibold mb-2">Copy / clone an existing override</div>
+              <div class="small text-muted mb-3">Reuse one account's custom retention windows on another account without retyping every field.</div>
+              {% for field in account_retention_override_clone_form %}
+                <div class="mb-3">
+                  <label class="form-label">{{ field.label }}</label>
+                  {{ field }}
+                  {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                  {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+              {% endfor %}
+              <button class="btn btn-outline-secondary">Copy override</button>
+              <div class="form-text mt-2">This creates or replaces only the target account's override. Existing evidence rows are not rewritten.</div>
+            </form>
+          </div>
+        </div>
+        {% if account_retention_overrides.rows %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Account</th><th>Active override fields</th><th>Window range</th><th></th></tr></thead>
+              <tbody>
+                {% for row in account_retention_overrides.rows %}
+                  <tr>
+                    <td><div class="fw-semibold">{{ row.account_label }}</div>{% if row.override.source_template %}<div class="small text-muted">Seeded from {{ row.override.source_template.template_name }}</div>{% endif %}</td>
+                    <td>
+                      {% if row.active_fields %}
+                        <div class="small">{% for field in row.active_fields|slice:":3" %}<span class="badge text-bg-light me-1">{{ field.label }} {{ field.days }}d</span>{% endfor %}</div>
+                        {% if row.active_count > 3 %}<div class="small text-muted mt-1">+{{ row.active_count|add:"-3" }} more override fields</div>{% endif %}
+                      {% else %}
+                        <span class="text-muted">No override fields saved</span>
+                      {% endif %}
+                    </td>
+                    <td>{% if row.shortest_days %}{{ row.shortest_days }}–{{ row.longest_days }} days{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                    <td class="text-end">
+                      <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:risk_settings' %}?edit_override={{ row.override.id }}">Edit</a>
+                      <a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:risk_settings' %}?clone_override={{ row.override.id }}">Clone</a>
+                      <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:risk_settings' %}?template_from_override={{ row.override.id }}">Save as template</a>
+                      {% if row.override.source_template %}
+                        <form method="post" class="d-inline">
+                          {% csrf_token %}
+                          <input type="hidden" name="reset_account_retention_override_to_template" value="1">
+                          <input type="hidden" name="override_id" value="{{ row.override.id }}">
+                          <button class="btn btn-sm btn-outline-warning" onclick="return confirm('Reset this override back to its seeded template values?');">Reset to template</button>
+                        </form>
+                        <form method="post" class="d-inline">
+                          {% csrf_token %}
+                          <input type="hidden" name="detach_account_retention_override_template" value="1">
+                          <input type="hidden" name="override_id" value="{{ row.override.id }}">
+                          <button class="btn btn-sm btn-outline-dark" onclick="return confirm('Detach this override from template tracking and keep its current windows?');">Detach</button>
+                        </form>
+                      {% endif %}
+                      <form method="post" class="d-inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="delete_account_retention_override" value="1">
+                        <input type="hidden" name="override_id" value="{{ row.override.id }}">
+                        <button class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this account retention override?');">Delete</button>
+                      </form>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="text-muted small">No per-account overrides yet. Global retention presets will apply to every account until you add one here.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card shadow-sm mt-3">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <div>
+            <h2 class="h5 mb-1">Account-family retention templates</h2>
+            <div class="small text-muted">Save reusable family policies, apply them to multiple accounts, and review where the app sees reuse opportunities.</div>
+          </div>
+          <div class="small text-muted">{{ account_retention_templates.count }} template{{ account_retention_templates.count|pluralize }}</div>
+        </div>
+
+        {% if account_retention_template_recommendations.active_account_count %}
+          <div class="border rounded p-3 bg-light-subtle mb-4">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <div>
+                <div class="fw-semibold">Template recommendation helpers</div>
+                <div class="small text-muted">Suggestions are based on active account labels plus the override patterns already in use.</div>
+              </div>
+              <div class="small text-muted">{{ account_retention_template_recommendations.active_account_count }} active account{{ account_retention_template_recommendations.active_account_count|pluralize }}</div>
+            </div>
+            <div class="row g-2 mb-3">
+              <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Recommended template applies</div><div class="fw-semibold">{{ account_retention_template_recommendations.recommended_apply_count }}</div></div></div>
+              <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Uncovered active accounts</div><div class="fw-semibold">{{ account_retention_template_recommendations.uncovered_count }}</div></div></div>
+              <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Template candidates from repeated overrides</div><div class="fw-semibold">{{ account_retention_template_recommendations.template_candidate_count }}</div></div></div>
+            </div>
+
+            {% if account_retention_template_recommendations.template_rows %}
+              <div class="table-responsive mb-3">
+                <table class="table table-sm align-middle mb-0">
+                  <thead><tr><th>Template</th><th>Suggested accounts</th><th>Coverage</th><th></th></tr></thead>
+                  <tbody>
+                    {% for row in account_retention_template_recommendations.template_rows %}
+                      <tr>
+                        <td><div class="fw-semibold">{{ row.template.template_name }}</div><div class="small text-muted">{{ row.family_label }}</div></td>
+                        <td>
+                          {% if row.suggested_accounts %}
+                            <div class="small">{% for label in row.suggested_accounts %}<span class="badge text-bg-light me-1 mb-1">{{ label }}</span>{% endfor %}</div>
+                            {% if row.suggested_account_extra_count %}<div class="small text-muted">+{{ row.suggested_account_extra_count }} more</div>{% endif %}
+                          {% else %}<span class="text-muted">No uncovered family matches</span>{% endif %}
+                        </td>
+                        <td><div class="small text-muted">Matching overrides: {{ row.matching_override_count }}</div><div class="small text-muted">Family accounts already covered: {{ row.applied_count }}</div></td>
+                        <td class="text-end">
+                          {% if row.suggested_accounts %}
+                            <a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:risk_settings' %}?apply_template={{ row.template.id }}&apply_accounts={{ row.suggested_accounts|join:'|'|urlencode }}">Prefill apply</a>
+                          {% else %}<span class="text-muted small">—</span>{% endif %}
+                        </td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% endif %}
+
+            <div class="row g-3">
+              <div class="col-lg-6">
+                <div class="border rounded p-3 h-100">
+                  <div class="fw-semibold mb-2">Uncovered active accounts</div>
+                  {% if account_retention_template_recommendations.uncovered_accounts %}
+                    <div class="table-responsive">
+                      <table class="table table-sm align-middle mb-0">
+                        <thead><tr><th>Account</th><th>Suggested template</th><th></th></tr></thead>
+                        <tbody>
+                          {% for row in account_retention_template_recommendations.uncovered_accounts %}
+                            <tr>
+                              <td>{{ row.account_label }}</td>
+                              <td>{% if row.recommended_template %}<div class="fw-semibold">{{ row.recommended_template.template_name }}</div><div class="small text-muted">{{ row.recommended_template.family_label|default:'General' }}</div>{% else %}<span class="text-muted">No clear template suggestion</span>{% endif %}</td>
+                              <td class="text-end">{% if row.recommended_template %}<a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:risk_settings' %}?apply_template={{ row.recommended_template.id }}&apply_accounts={{ row.account_label|urlencode }}">Use</a>{% endif %}</td>
+                            </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
+                  {% else %}<div class="small text-muted">Every active labeled account already has an override, or no active account labels have been seen yet.</div>{% endif %}
+                </div>
+              </div>
+              <div class="col-lg-6">
+                <div class="border rounded p-3 h-100">
+                  <div class="fw-semibold mb-2">Repeated override patterns worth templating</div>
+                  {% if account_retention_template_recommendations.template_candidate_rows %}
+                    <div class="table-responsive">
+                      <table class="table table-sm align-middle mb-0">
+                        <thead><tr><th>Source override</th><th>Reuse</th><th></th></tr></thead>
+                        <tbody>
+                          {% for row in account_retention_template_recommendations.template_candidate_rows %}
+                            <tr>
+                              <td><div class="fw-semibold">{{ row.source_override.account_label }}</div><div class="small text-muted">{{ row.count }} accounts already share this policy</div></td>
+                              <td><div class="small">{% for label in row.account_labels|slice:':4' %}<span class="badge text-bg-light me-1 mb-1">{{ label }}</span>{% endfor %}</div>{% if row.count > 4 %}<div class="small text-muted">+{{ row.count|add:'-4' }} more</div>{% endif %}</td>
+                              <td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:risk_settings' %}?template_from_override={{ row.source_override.id }}">Save as template</a></td>
+                            </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
+                  {% else %}<div class="small text-muted">No repeated override pattern is strong enough yet to recommend a new family template.</div>{% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+        {% endif %}
+
+        <div class="row g-3 mb-4">
+          <div class="col-xl-6">
+            <form method="post" class="h-100 border rounded p-3 bg-light-subtle">
+              {% csrf_token %}
+              <input type="hidden" name="save_account_retention_template" value="1">
+              {% if editing_account_retention_template %}<input type="hidden" name="template_id" value="{{ editing_account_retention_template.id }}">{% endif %}
+              <div class="fw-semibold mb-2">{% if editing_account_retention_template %}Edit retention template{% else %}Create retention template{% endif %}</div>
+              {% for field in account_retention_template_form %}
+                <div class="mb-3">
+                  <label class="form-label">{{ field.label }}</label>
+                  {{ field }}
+                  {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                  {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+              {% endfor %}
+              <div class="d-flex gap-2">
+                <button class="btn btn-outline-primary">{% if editing_account_retention_template %}Update template{% else %}Save template{% endif %}</button>
+                {% if editing_account_retention_template %}<a class="btn btn-outline-secondary" href="{% url 'portfolios:risk_settings' %}">Cancel</a>{% endif %}
+              </div>
+            </form>
+          </div>
+          <div class="col-xl-6">
+            <form method="post" class="h-100 border rounded p-3">
+              {% csrf_token %}
+              <input type="hidden" name="apply_account_retention_template" value="1">
+              <div class="fw-semibold mb-2">Apply a template to account labels</div>
+              <div class="small text-muted mb-3">Seed or refresh per-account override rows from a reusable family policy.</div>
+              {% for field in account_retention_template_apply_form %}
+                <div class="mb-3">
+                  <label class="form-label">{{ field.label }}</label>
+                  {{ field }}
+                  {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                  {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+              {% endfor %}
+              <button class="btn btn-outline-secondary">Apply template</button>
+            </form>
+          </div>
+        </div>
+
+        {% if account_retention_templates.rows %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Template</th><th>Family</th><th>Fields</th><th>Window range</th><th></th></tr></thead>
+              <tbody>
+                {% for row in account_retention_templates.rows %}
+                  <tr>
+                    <td><div class="fw-semibold">{{ row.template_name }}</div></td>
+                    <td>{{ row.family_label }}</td>
+                    <td>{% if row.active_fields %}{% for field in row.active_fields|slice:':3' %}<span class="badge text-bg-light me-1">{{ field.label }} {{ field.days }}d</span>{% endfor %}{% if row.active_count > 3 %}<div class="small text-muted mt-1">+{{ row.active_count|add:'-3' }} more</div>{% endif %}{% else %}<span class="text-muted">No fields saved</span>{% endif %}</td>
+                    <td>{% if row.shortest_days %}{{ row.shortest_days }}–{{ row.longest_days }} days{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                    <td class="text-end">
+                      <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:risk_settings' %}?edit_template={{ row.template.id }}">Edit</a>
+                      <a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:risk_settings' %}?apply_template={{ row.template.id }}">Apply</a>
+                      <form method="post" class="d-inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="delete_account_retention_template" value="1">
+                        <input type="hidden" name="template_id" value="{{ row.template.id }}">
+                        <button class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this account retention template?');">Delete</button>
+                      </form>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="text-muted small">No reusable templates yet. Save one from an existing account override or create one here.</div>
+        {% endif %}
+      {% if evidence_lifecycle_automation %}
+        <div class="border rounded p-3 bg-light-subtle mt-4">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <div>
+              <div class="fw-semibold">Evidence lifecycle automation</div>
+              <div class="small text-muted">Scan evidence retention posture and optionally archive expired attachments with an explicit operator-run lifecycle job.</div>
+            </div>
+            <div class="small text-muted">{{ evidence_lifecycle_automation.queue_label }}</div>
+          </div>
+          <div class="row g-2">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Attachment-backed rows</div><div class="fw-semibold">{{ evidence_lifecycle_automation.attachment_count }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Expiring in {{ evidence_lifecycle_automation.soon_days }}d</div><div class="fw-semibold {% if evidence_lifecycle_automation.expiring_soon_count %}text-warning-emphasis{% endif %}">{{ evidence_lifecycle_automation.expiring_soon_count }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Expired</div><div class="fw-semibold {% if evidence_lifecycle_automation.expired_count %}text-danger{% else %}text-success{% endif %}">{{ evidence_lifecycle_automation.expired_count }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Missing retention</div><div class="fw-semibold {% if evidence_lifecycle_automation.missing_retention_count %}text-warning-emphasis{% endif %}">{{ evidence_lifecycle_automation.missing_retention_count }}</div></div></div>
+          </div>
+          <div class="small text-muted mt-2">{{ evidence_lifecycle_automation.recommended_action }} <a href="{% url 'portfolios:stop_policy_followup' %}?retention=EXPIRING_SOON{% if account_filter %}&account={{ account_filter }}{% endif %}">Open retention queue</a></div>
+          {% if evidence_lifecycle_automation.last_run %}<div class="small text-muted mt-1">Last lifecycle run: {{ evidence_lifecycle_automation.last_run.created_at|date:"Y-m-d H:i" }}{% if evidence_lifecycle_automation.last_run.archive_expired %} · archive mode{% else %} · scan mode{% endif %} · {{ evidence_lifecycle_automation.last_run.notes|default:"no notes" }}</div>{% endif %}
+        </div>
+      {% endif %}
+
+      {% if account_retention_template_drift.rows %}
+        <div class="border rounded p-3 bg-light-subtle mt-4">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <div>
+              <div class="fw-semibold">Template drift remediation</div>
+              <div class="small text-muted">Review seeded overrides that drifted from their template, then either reset them or intentionally detach them.</div>
+            </div>
+            <div class="small text-muted">{{ account_retention_template_drift.aligned_count }} aligned · {{ account_retention_template_drift.drifted_count }} drifted</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Seeded overrides</div><div class="fw-semibold">{{ account_retention_template_drift.count }}</div></div></div>
+            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Drifted</div><div class="fw-semibold {% if account_retention_template_drift.drifted_count %}text-warning-emphasis{% endif %}">{{ account_retention_template_drift.drifted_count }}</div></div></div>
+            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Good detach candidates</div><div class="fw-semibold">{{ account_retention_template_drift.detached_candidate_count }}</div></div></div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Account</th><th>Template</th><th>Drift</th><th>Evidence posture</th><th></th></tr></thead>
+              <tbody>
+                {% for row in account_retention_template_drift.rows %}
+                  <tr>
+                    <td>{{ row.account_label }}</td>
+                    <td><div class="fw-semibold">{{ row.template_name }}</div>{% if row.family_label %}<div class="small text-muted">{{ row.family_label }}</div>{% endif %}</td>
+                    <td>{% if row.changed_field_count %}<div class="small">{% for change in row.changed_fields|slice:':2' %}<span class="badge text-bg-warning me-1">{{ change.label }} {{ change.template_days|default:'—' }}→{{ change.override_days|default:'—' }}</span>{% endfor %}</div>{% if row.changed_field_count > 2 %}<div class="small text-muted">+{{ row.changed_field_count|add:'-2' }} more field{{ row.changed_field_count|add:'-2'|pluralize }}</div>{% endif %}{% else %}<span class="badge text-bg-success">Aligned</span>{% endif %}</td>
+                    <td><div class="small">{{ row.attachment_count }} attachment-backed</div><div class="small text-muted">{{ row.expiring_soon_count }} expiring soon · {{ row.expired_count }} expired</div></td>
+                    <td class="text-end">
+                      {% if row.changed_field_count %}
+                        <form method="post" class="d-inline">
+                          {% csrf_token %}
+                          <input type="hidden" name="reset_account_retention_override_to_template" value="1">
+                          <input type="hidden" name="override_id" value="{{ row.override.id }}">
+                          <button class="btn btn-sm btn-outline-warning">Reset</button>
+                        </form>
+                      {% endif %}
+                      <form method="post" class="d-inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="detach_account_retention_override_template" value="1">
+                        <input type="hidden" name="override_id" value="{{ row.override.id }}">
+                        <button class="btn btn-sm btn-outline-dark">Detach</button>
+                      </form>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      {% endif %}
+      </div>
+    </div>
+
+  </div>
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Current exposure snapshot</h2>
+        <div class="row g-2 mb-3">
+          <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Account equity</div><div class="fw-semibold">{% if exposure.account_equity is not None %}${{ exposure.account_equity }}{% else %}Not set{% endif %}</div></div></div>
+          <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Held market value</div><div class="fw-semibold">${{ exposure.total_market_value }}</div></div></div>
+          <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Gross exposure</div><div class="fw-semibold">{% if exposure.gross_exposure_pct is not None %}{{ exposure.gross_exposure_pct }}%{% else %}—{% endif %}</div></div></div>
+          <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Net exposure</div><div class="fw-semibold">{% if exposure.net_exposure_pct is not None %}{{ exposure.net_exposure_pct }}%{% else %}—{% endif %}</div></div></div>
+          <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Cash headroom</div><div class="fw-semibold">{% if exposure.cash_headroom is not None %}${{ exposure.cash_headroom }}{% else %}—{% endif %}</div></div></div>
+          <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Single-position cap</div><div class="fw-semibold">{% if exposure.max_position_weight_pct is not None %}{{ exposure.max_position_weight_pct }}%{% else %}—{% endif %}</div></div></div>
+          <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Sector cap</div><div class="fw-semibold">{% if exposure.max_sector_weight_pct is not None %}{{ exposure.max_sector_weight_pct }}%{% else %}—{% endif %}</div></div></div>
+          <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Net exposure cap</div><div class="fw-semibold">{% if exposure.max_net_exposure_pct is not None %}{{ exposure.max_net_exposure_pct }}%{% else %}—{% endif %}</div></div></div>
+          <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Positions over cap</div><div class="fw-semibold">{{ exposure.over_position_cap_count }}</div></div></div>
+          <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Positions near cap</div><div class="fw-semibold">{{ exposure.near_position_cap_count }}</div></div></div>
+          <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Net posture</div><div class="fw-semibold">{% if exposure.net_exposure_posture == "OVER" %}<span class="badge text-bg-danger">Over</span>{% elif exposure.net_exposure_posture == "NEAR" %}<span class="badge text-bg-warning">Near</span>{% elif exposure.net_exposure_posture == "OK" %}<span class="badge text-bg-success">OK</span>{% else %}—{% endif %}</div></div></div>
+          <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">High-correlation limit</div><div class="fw-semibold">{% if exposure.max_high_correlation_positions %}{{ exposure.max_high_correlation_positions }} names{% else %}—{% endif %}</div></div></div>
+          <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Correlation threshold</div><div class="fw-semibold">{% if exposure.high_correlation_threshold is not None %}{{ exposure.high_correlation_threshold }} over {{ exposure.correlation_lookback_bars }} bars{% else %}—{% endif %}</div></div></div>
+        </div>
+        {% if exposure.top_positions %}
+          <h3 class="h6">Top concentration</h3>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Symbol</th><th>Market value</th><th>Weight</th><th>Cap posture</th></tr></thead>
+              <tbody>
+                {% for item in exposure.top_positions %}
+                  <tr>
+                    <td>{{ item.position.instrument.symbol }}</td>
+                    <td>${{ item.market_value }}</td>
+                    <td>{% if item.weight_pct is not None %}{{ item.weight_pct }}%{% else %}—{% endif %}</td>
+                    <td>
+                      {% if item.cap_posture == "OVER" %}<span class="badge text-bg-danger">Over</span>
+                      {% elif item.cap_posture == "NEAR" %}<span class="badge text-bg-warning">Near</span>
+                      {% else %}<span class="badge text-bg-success">OK</span>{% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="text-muted">No open holdings yet.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <div>
+            <h2 class="h5 mb-1">Broker/account snapshot</h2>
+            <div class="small text-muted">Optional external account snapshots so the app can show drift between tracked holdings and what your broker/export says.</div>
+            <div class="small mt-1"><a href="{% url 'portfolios:broker_position_reconciliation' %}">Open broker position reconciliation</a></div>
+          </div>
+        </div>
+        <form method="get" class="row g-2 align-items-end mb-4">
+          <div class="col-md-8">
+            <label class="form-label">Account filter</label>
+            <select name="account" class="form-select">
+              <option value="">All accounts (combined latest posture)</option>
+              {% for option in account_options %}
+                <option value="{{ option }}" {% if account_filter == option %}selected{% endif %}>{% if option == "__UNLABELED__" %}Unlabeled / blended{% else %}{{ option }}{% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4 d-flex gap-2">
+            <button class="btn btn-outline-secondary w-100">Apply</button>
+          </div>
+        </form>
+        <form method="post" class="mb-4">
+          {% csrf_token %}
+          <input type="hidden" name="save_broker_snapshot" value="1">
+          {% for field in snapshot_form %}
+            <div class="mb-3">
+              <label class="form-label">{{ field.label }}</label>
+              {{ field }}
+              {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+              {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+          {% endfor %}
+          <button class="btn btn-outline-primary">Save broker snapshot</button>
+          <div class="form-text mt-2">This does not connect to your broker or store credentials. It only stores the numbers from a manual/account-export snapshot.</div>
+        </form>
+
+        <h3 class="h6 mb-3">Latest snapshot posture</h3>
+        {% if not account_filter and broker_posture.combined_latest_snapshot_count > 1 %}
+          <div class="row g-2 mb-3">
+            <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Combined latest accounts</div><div class="fw-semibold">{{ broker_posture.combined_latest_snapshot_count }}</div></div></div>
+            <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Combined equity / cash</div><div class="fw-semibold">${{ broker_posture.combined_snapshot_equity }} / ${{ broker_posture.combined_snapshot_cash }}</div></div></div>
+            <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Combined invested</div><div class="fw-semibold">${{ broker_posture.combined_snapshot_invested }}</div></div></div>
+            <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Combined drift</div><div class="fw-semibold">{% if broker_posture.combined_market_value_drift > 0 %}+{% endif %}${{ broker_posture.combined_market_value_drift }}</div><div class="small text-muted">{% if broker_posture.combined_market_value_drift_pct is not None %}{{ broker_posture.combined_market_value_drift_pct }}% vs combined invested{% else %}—{% endif %}</div></div></div>
+          </div>
+          <div class="small text-muted mb-3">Tracked holdings can now carry optional account labels. Use the account filter above to compare one labeled account against its broker snapshot, or leave the filter blank for a blended top-line view.</div>
+        {% endif %}
+        {% if broker_posture.latest %}
+          <div class="row g-2 mb-3">
+            <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Account / source / as of</div><div class="fw-semibold">{% if broker_posture.latest.account_label %}{{ broker_posture.latest.account_label }}{% else %}Unlabeled account{% endif %}</div><div class="small text-muted">{{ broker_posture.latest.source_label }} · {{ broker_posture.latest.as_of }}</div></div></div>
+            <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Broker equity / cash</div><div class="fw-semibold">${{ broker_posture.snapshot_equity }} / ${{ broker_posture.snapshot_cash }}</div></div></div>
+            <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Broker invested</div><div class="fw-semibold">${{ broker_posture.snapshot_invested }}</div></div></div>
+            <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Tracked held market value</div><div class="fw-semibold">${{ broker_posture.tracked_market_value }}</div></div></div>
+            <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Market-value drift</div><div class="fw-semibold">{% if broker_posture.market_value_drift > 0 %}+{% endif %}${{ broker_posture.market_value_drift }}</div><div class="small text-muted">{% if broker_posture.market_value_drift_pct is not None %}{{ broker_posture.market_value_drift_pct }}% vs broker invested{% else %}—{% endif %}</div></div></div>
+            <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Drift posture</div><div class="fw-semibold">{% if broker_posture.drift_posture == 'LARGE' %}<span class="badge text-bg-danger">Large drift</span>{% elif broker_posture.drift_posture == 'MEDIUM' %}<span class="badge text-bg-warning">Medium drift</span>{% else %}<span class="badge text-bg-success">Small drift</span>{% endif %}</div>{% if broker_posture.account_equity_drift is not None %}<div class="small text-muted mt-1">Profile-vs-broker equity drift: {% if broker_posture.account_equity_drift > 0 %}+{% endif %}${{ broker_posture.account_equity_drift }}{% if broker_posture.account_equity_drift_pct is not None %} ({{ broker_posture.account_equity_drift_pct }}%){% endif %}</div>{% endif %}</div></div>
+          </div>
+          {% if broker_posture.latest.notes %}<div class="small text-muted mb-3">Notes: {{ broker_posture.latest.notes }}</div>{% endif %}
+        {% else %}
+          <div class="text-muted mb-3">No broker/account snapshot saved yet.</div>
+        {% endif %}
+
+        {% if broker_posture.latest_per_account and not account_filter %}
+          <div class="small text-muted mb-2">Latest snapshot per account</div>
+          <div class="table-responsive mb-3">
+            <table class="table table-sm align-middle">
+              <thead><tr><th>Account</th><th>As of</th><th>Equity</th><th>Cash</th><th>Invested</th></tr></thead>
+              <tbody>
+                {% for item in broker_posture.latest_per_account %}
+                  <tr>
+                    <td>{{ item.account_label }}</td>
+                    <td>{{ item.snapshot.as_of }}</td>
+                    <td>${{ item.snapshot_equity }}</td>
+                    <td>${{ item.snapshot_cash }}</td>
+                    <td>${{ item.snapshot_invested }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+
+        {% if recent_snapshots %}
+          <div class="small text-muted mb-2">Recent snapshots</div>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>As of</th><th>Account</th><th>Source</th><th>Equity</th><th>Cash</th></tr></thead>
+              <tbody>
+                {% for snap in recent_snapshots %}
+                  <tr><td>{{ snap.as_of }}</td><td>{% if snap.account_label %}{{ snap.account_label }}{% else %}<span class="text-muted">—</span>{% endif %}</td><td>{{ snap.source_label }}</td><td>${{ snap.account_equity }}</td><td>${{ snap.cash_balance }}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+
+        {% if recent_broker_runs %}
+          <div class="small text-muted mb-2 mt-3">Recent broker reconciliation runs</div>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Created</th><th>Account</th><th>Label</th><th>Unresolved</th><th></th></tr></thead>
+              <tbody>
+                {% for run in recent_broker_runs %}
+                  <tr><td>{{ run.created_at }}</td><td>{% if run.account_label %}{{ run.account_label }}{% else %}<span class="text-muted">—</span>{% endif %}</td><td>{{ run.source_label }}</td><td>{% if run.unresolved_count %}<span class="badge text-bg-warning">{{ run.unresolved_count }}</span>{% else %}<span class="badge text-bg-success">0</span>{% endif %}</td><td><a href="{% url 'portfolios:broker_position_reconciliation_run_detail' run.pk %}">Open</a></td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+
+
+        {% if account_risk_posture.rows %}
+          <hr class="my-4">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <div>
+              <h3 class="h6 mb-1">Account-level risk posture</h3>
+              <div class="small text-muted">Review deployment, largest-position pressure, reconciliation drift, and unresolved import issues account by account.</div>
+            </div>
+            <a class="small" href="{% url 'portfolios:holdings' %}">Open holdings</a>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Accounts tracked</div><div class="fw-semibold">{{ account_risk_posture.count }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Over posture</div><div class="fw-semibold text-danger">{{ account_risk_posture.posture_counts.OVER|default:0 }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Near posture</div><div class="fw-semibold text-warning-emphasis">{{ account_risk_posture.posture_counts.NEAR|default:0 }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Missing equity basis</div><div class="fw-semibold">{{ account_risk_posture.posture_counts.NO_EQUITY|default:0 }}</div></div></div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead><tr><th>Account</th><th>Posture</th><th>Tracked MV</th><th>Deployment</th><th>Largest position</th><th>Drift</th><th>Issues</th><th></th></tr></thead>
+              <tbody>
+                {% for row in account_risk_posture.rows %}
+                  <tr>
+                    <td>
+                      <div class="fw-semibold">{{ row.account_label }}</div>
+                      <div class="small text-muted">{{ row.exposure.open_count }} open holdings{% if row.equity_source %} · equity basis: {{ row.equity_source }}{% endif %}</div>
+                    </td>
+                    <td>
+                      {% if row.overall_posture == "OVER" %}<span class="badge text-bg-danger">Over</span>
+                      {% elif row.overall_posture == "NEAR" %}<span class="badge text-bg-warning">Near</span>
+                      {% elif row.overall_posture == "NO_EQUITY" %}<span class="badge text-bg-secondary">No equity basis</span>
+                      {% else %}<span class="badge text-bg-success">OK</span>{% endif %}
+                    </td>
+                    <td>${{ row.exposure.total_market_value }}</td>
+                    <td>
+                      {% if row.deployment_pct is not None %}
+                        <div class="fw-semibold">{{ row.deployment_pct }}%</div>
+                        <div class="small text-muted">{% if row.deployment_posture == "OVER" %}Over net cap{% elif row.deployment_posture == "NEAR" %}Near net cap{% else %}Within net cap{% endif %}</div>
+                      {% else %}<span class="text-muted">—</span>{% endif %}
+                    </td>
+                    <td>
+                      {% if row.largest_position %}
+                        <div class="fw-semibold">{{ row.largest_position.position.instrument.symbol }} · ${{ row.largest_position.market_value }}</div>
+                        <div class="small text-muted">{% if row.largest_position_pct_of_equity is not None %}{{ row.largest_position_pct_of_equity }}% of equity{% else %}{{ row.largest_position.weight_pct|default:'—' }}% of tracked book{% endif %}</div>
+                      {% else %}<span class="text-muted">—</span>{% endif %}
+                    </td>
+                    <td>
+                      {% if row.broker_posture.latest %}
+                        <div class="fw-semibold">{% if row.broker_posture.market_value_drift > 0 %}+{% endif %}${{ row.broker_posture.market_value_drift }}</div>
+                        <div class="small text-muted">{% if row.broker_posture.market_value_drift_pct is not None %}{{ row.broker_posture.market_value_drift_pct }}% vs broker invested{% else %}—{% endif %}</div>
+                      {% else %}<span class="text-muted">No snapshot</span>{% endif %}
+                    </td>
+                    <td>
+                      <div class="small {% if row.unresolved_count or row.missing_from_latest_import %}text-warning-emphasis{% else %}text-muted{% endif %}">Unresolved: {{ row.unresolved_count }}</div>
+                      <div class="small {% if row.missing_from_latest_import %}text-warning-emphasis{% else %}text-muted{% endif %}">Missing from import: {{ row.missing_from_latest_import }}</div>
+                    </td>
+                    <td><a href="{% url 'portfolios:holdings' %}?status=OPEN{% if row.holdings_url_account %}&account={{ row.holdings_url_account|urlencode }}{% endif %}">Open</a></td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+
+        {% if account_exposure_heatmap.rows %}
+          <hr class="my-4">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <div>
+              <h3 class="h6 mb-1">Account exposure heatmap</h3>
+              <div class="small text-muted">Visual concentration board by account showing where sector crowding and single-name pressure are building first.</div>
+            </div>
+            <a class="small" href="{% url 'portfolios:holdings' %}">Review holdings</a>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Accounts scored</div><div class="fw-semibold">{{ account_exposure_heatmap.count }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Over heat</div><div class="fw-semibold text-danger">{{ account_exposure_heatmap.posture_counts.OVER|default:0 }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Near heat</div><div class="fw-semibold text-warning-emphasis">{{ account_exposure_heatmap.posture_counts.NEAR|default:0 }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Cool</div><div class="fw-semibold text-success">{{ account_exposure_heatmap.posture_counts.OK|default:0 }}</div></div></div>
+          </div>
+          {% if account_exposure_heatmap.hottest_sector_account or account_exposure_heatmap.heaviest_position_account %}
+            <div class="row g-2 mb-3">
+              <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Hottest sector account</div>{% if account_exposure_heatmap.hottest_sector_account and account_exposure_heatmap.hottest_sector_account.top_sector %}<div class="fw-semibold">{{ account_exposure_heatmap.hottest_sector_account.account_label }}</div><div class="small text-muted">{{ account_exposure_heatmap.hottest_sector_account.top_sector.sector }} · {{ account_exposure_heatmap.hottest_sector_account.top_sector.weight_pct }}% of tracked book</div>{% else %}<div class="fw-semibold">—</div>{% endif %}</div></div>
+              <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Heaviest single-position account</div>{% if account_exposure_heatmap.heaviest_position_account and account_exposure_heatmap.heaviest_position_account.top_position %}<div class="fw-semibold">{{ account_exposure_heatmap.heaviest_position_account.account_label }}</div><div class="small text-muted">{{ account_exposure_heatmap.heaviest_position_account.top_position.position.instrument.symbol }} · {{ account_exposure_heatmap.heaviest_position_account.top_position.weight_pct }}% of tracked book</div>{% else %}<div class="fw-semibold">—</div>{% endif %}</div></div>
+            </div>
+          {% endif %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Account</th><th>Heat</th><th>Top sector</th><th>Top names</th><th>Pressure counts</th></tr></thead>
+              <tbody>
+                {% for row in account_exposure_heatmap.rows %}
+                  <tr>
+                    <td>
+                      <div class="fw-semibold">{{ row.account_label }}</div>
+                      <div class="small text-muted">{{ row.exposure.open_count }} open holdings · ${{ row.exposure.total_market_value }}</div>
+                    </td>
+                    <td>
+                      {% if row.overall_posture == "OVER" %}<span class="badge text-bg-danger">Over</span>
+                      {% elif row.overall_posture == "NEAR" %}<span class="badge text-bg-warning">Near</span>
+                      {% else %}<span class="badge text-bg-success">OK</span>{% endif %}
+                    </td>
+                    <td>
+                      {% if row.top_sector %}
+                        <div class="fw-semibold">{{ row.top_sector.sector }}</div>
+                        <div class="small text-muted">{{ row.top_sector.weight_pct|default:'—' }}% · {{ row.top_sector.count }} name{{ row.top_sector.count|pluralize }}</div>
+                        <div class="small text-muted">{% for item in row.top_sector.top_symbols %}{% if not forloop.first %}, {% endif %}{{ item.symbol }}{% endfor %}</div>
+                      {% else %}<span class="text-muted">—</span>{% endif %}
+                    </td>
+                    <td>
+                      {% if row.exposure.top_positions %}
+                        {% for item in row.exposure.top_positions|slice:":3" %}
+                          <div class="small"><span class="fw-semibold">{{ item.position.instrument.symbol }}</span> · {{ item.weight_pct|default:'—' }}%</div>
+                        {% endfor %}
+                      {% else %}<span class="text-muted">—</span>{% endif %}
+                    </td>
+                    <td>
+                      <div class="small {% if row.over_count %}text-danger{% else %}text-muted{% endif %}">Over: {{ row.over_count }}</div>
+                      <div class="small {% if row.near_count %}text-warning-emphasis{% else %}text-muted{% endif %}">Near: {{ row.near_count }}</div>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+
+        {% if holding_risk_guardrails.count %}
+          <hr class="my-4">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <div>
+              <h3 class="h6 mb-1">Held-position stop / risk guardrails</h3>
+              <div class="small text-muted">Turn drawdown pressure into explicit operator fixes: add a stop, tighten it, prepare for a near-stop, or review a deeper loss before it gets worse.</div>
+            </div>
+            <a class="small" href="{% url 'portfolios:holdings' %}">Open holdings</a>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Holdings scored</div><div class="fw-semibold">{{ holding_risk_guardrails.count }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Over guardrails</div><div class="fw-semibold text-danger">{{ holding_risk_guardrails.over_count }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Missing stops</div><div class="fw-semibold text-danger">{{ holding_risk_guardrails.missing_stop_count }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Near-stop warnings</div><div class="fw-semibold text-warning-emphasis">{{ holding_risk_guardrails.near_stop_count }}</div></div></div>
+          </div>
+          <div class="table-responsive mb-3">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Symbol</th><th>Account</th><th>Guardrail</th><th>Reason</th><th>Action</th><th></th></tr></thead>
+              <tbody>
+                {% for snap in holding_risk_guardrails.rows %}
+                  <tr>
+                    <td><div class="fw-semibold">{{ snap.position.instrument.symbol }}</div><div class="small text-muted">{% if snap.pnl_pct is not None %}{{ snap.pnl_pct }}%{% else %}—{% endif %}</div></td>
+                    <td>{% if snap.position.account_label %}{{ snap.position.account_label }}{% else %}<span class="text-muted">Blended</span>{% endif %}</td>
+                    <td>
+                      {% if snap.risk_guardrail_posture == "OVER" %}<span class="badge text-bg-danger">{{ snap.risk_guardrail_label }}</span>
+                      {% elif snap.risk_guardrail_posture == "NEAR" %}<span class="badge text-bg-warning">{{ snap.risk_guardrail_label }}</span>
+                      {% else %}<span class="badge text-bg-success">{{ snap.risk_guardrail_label }}</span>{% endif %}
+                      {% if snap.stop_loss_pct is not None %}<div class="small text-muted mt-1">Stop loss budget: {{ snap.stop_loss_pct }}%</div>{% endif %}
+                    </td>
+                    <td class="small text-muted">{{ snap.risk_guardrail_reason }}</td>
+                    <td class="small">{{ snap.risk_guardrail_action }}</td>
+                    <td><a href="{% url 'portfolios:holding_detail' snap.position.pk %}">Open</a></td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+
+        {% if account_stop_guardrails.rows %}
+          <hr class="my-4">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <div>
+              <h3 class="h6 mb-1">Account stop-guardrail board</h3>
+              <div class="small text-muted">See which broker accounts are carrying the most stop-discipline pressure instead of only looking at blended drawdowns.</div>
+            </div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Accounts scored</div><div class="fw-semibold">{{ account_stop_guardrails.count }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Over posture</div><div class="fw-semibold text-danger">{{ account_stop_guardrails.posture_counts.OVER|default:0 }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Near posture</div><div class="fw-semibold text-warning-emphasis">{{ account_stop_guardrails.posture_counts.NEAR|default:0 }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">OK</div><div class="fw-semibold text-success">{{ account_stop_guardrails.posture_counts.OK|default:0 }}</div></div></div>
+          </div>
+          <div class="table-responsive mb-3">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Account</th><th>Posture</th><th>Pressure counts</th><th>Hottest name</th><th></th></tr></thead>
+              <tbody>
+                {% for row in account_stop_guardrails.rows %}
+                  <tr>
+                    <td><div class="fw-semibold">{{ row.account_label }}</div><div class="small text-muted">{{ row.open_count }} open holdings</div></td>
+                    <td>{% if row.overall_posture == "OVER" %}<span class="badge text-bg-danger">Over</span>{% elif row.overall_posture == "NEAR" %}<span class="badge text-bg-warning">Near</span>{% else %}<span class="badge text-bg-success">OK</span>{% endif %}</td>
+                    <td><div class="small {% if row.missing_stop_count or row.stop_too_wide_count %}text-danger{% else %}text-muted{% endif %}">Missing stop: {{ row.missing_stop_count }} · Too wide: {{ row.stop_too_wide_count }}</div><div class="small {% if row.near_stop_count %}text-warning-emphasis{% else %}text-muted{% endif %}">Near stop: {{ row.near_stop_count }} · Near/over total: {{ row.near_count }} / {{ row.over_count }}</div></td>
+                    <td>{% if row.hottest %}<div class="fw-semibold">{{ row.hottest.position.instrument.symbol }}</div><div class="small text-muted">{{ row.hottest.risk_guardrail_label }}</div>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                    <td><a href="{% url 'portfolios:holdings' %}?status=OPEN{% if row.holdings_url_account %}&account={{ row.holdings_url_account|urlencode }}{% endif %}">Open</a></td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+
+        {% if account_drawdown_monitoring.rows %}
+          <hr class="my-4">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <div>
+              <h3 class="h6 mb-1">Account drawdown monitoring</h3>
+              <div class="small text-muted">See where warning and deep drawdowns are clustering before they become forced reactions.</div>
+            </div>
+            <div class="small text-muted">Warning at -{{ account_drawdown_monitoring.review_limit_pct }}% · deep at -{{ account_drawdown_monitoring.deterioration_limit_pct }}%</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Accounts scored</div><div class="fw-semibold">{{ account_drawdown_monitoring.count }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Stressed</div><div class="fw-semibold text-danger">{{ account_drawdown_monitoring.posture_counts.STRESSED|default:0 }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Warning</div><div class="fw-semibold text-warning-emphasis">{{ account_drawdown_monitoring.posture_counts.WARNING|default:0 }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">OK / no open</div><div class="fw-semibold text-success">{{ account_drawdown_monitoring.posture_counts.OK|default:0 }} / {{ account_drawdown_monitoring.posture_counts.NO_OPEN|default:0 }}</div></div></div>
+          </div>
+          {% if account_drawdown_monitoring.worst_account and account_drawdown_monitoring.worst_account.worst_snapshot %}
+            <div class="border rounded p-2 mb-3">
+              <div class="small text-muted">Worst account right now</div>
+              <div class="fw-semibold">{{ account_drawdown_monitoring.worst_account.account_label }}</div>
+              <div class="small text-muted">{{ account_drawdown_monitoring.worst_account.worst_snapshot.position.instrument.symbol }} · {{ account_drawdown_monitoring.worst_account.worst_drawdown_pct }}%</div>
+            </div>
+          {% endif %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Account</th><th>Posture</th><th>Worst name</th><th>Stress counts</th><th>Priority names</th></tr></thead>
+              <tbody>
+                {% for row in account_drawdown_monitoring.rows %}
+                  <tr>
+                    <td>
+                      <div class="fw-semibold">{{ row.account_label }}</div>
+                      <div class="small text-muted">{{ row.open_count }} open holdings · ${{ row.exposure.total_market_value }}</div>
+                    </td>
+                    <td>
+                      {% if row.overall_posture == "STRESSED" %}<span class="badge text-bg-danger">Stressed</span>
+                      {% elif row.overall_posture == "WARNING" %}<span class="badge text-bg-warning">Warning</span>
+                      {% elif row.overall_posture == "NO_OPEN" %}<span class="badge text-bg-secondary">No open</span>
+                      {% else %}<span class="badge text-bg-success">OK</span>{% endif %}
+                    </td>
+                    <td>
+                      {% if row.worst_snapshot %}
+                        <div class="fw-semibold">{{ row.worst_snapshot.position.instrument.symbol }}</div>
+                        <div class="small text-muted">{{ row.worst_drawdown_pct }}%</div>
+                      {% else %}<span class="text-muted">—</span>{% endif %}
+                    </td>
+                    <td>
+                      <div class="small {% if row.deep_count or row.sell_now_count %}text-danger{% else %}text-muted{% endif %}">Deep: {{ row.deep_count }} · Sell now: {{ row.sell_now_count }}</div>
+                      <div class="small {% if row.warning_count or row.review_now_count %}text-warning-emphasis{% else %}text-muted{% endif %}">Warning: {{ row.warning_count }} · Review: {{ row.review_now_count }}</div>
+                    </td>
+                    <td>
+                      {% if row.urgent_snapshots %}
+                        {% for snap in row.urgent_snapshots %}
+                          <div class="small"><span class="fw-semibold">{{ snap.position.instrument.symbol }}</span> · {{ snap.status_label }}</div>
+                        {% endfor %}
+                      {% else %}<span class="text-muted">—</span>{% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+        {% if account_holding_queues.rows %}
+          <hr class="my-4">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <div>
+              <h3 class="h6 mb-1">Account holding queues</h3>
+              <div class="small text-muted">Review the exact queues building inside each account: sell-now names, review debt, missing-import cleanup, and stop-discipline gaps.</div>
+            </div>
+            <a class="small" href="{% url 'portfolios:holdings' %}?status=OPEN">Open all holdings</a>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Accounts scored</div><div class="fw-semibold">{{ account_holding_queues.count }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Over posture</div><div class="fw-semibold text-danger">{{ account_holding_queues.posture_counts.OVER|default:0 }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Near posture</div><div class="fw-semibold text-warning-emphasis">{{ account_holding_queues.posture_counts.NEAR|default:0 }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">OK</div><div class="fw-semibold text-success">{{ account_holding_queues.posture_counts.OK|default:0 }}</div></div></div>
+          </div>
+          <div class="table-responsive mb-3">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Account</th><th>Posture</th><th>Queues</th><th>Hot names</th><th></th></tr></thead>
+              <tbody>
+                {% for row in account_holding_queues.rows %}
+                  <tr>
+                    <td><div class="fw-semibold">{{ row.account_label }}</div><div class="small text-muted">{{ row.open_count }} open holdings</div></td>
+                    <td>{% if row.overall_posture == "OVER" %}<span class="badge text-bg-danger">Over</span>{% elif row.overall_posture == "NEAR" %}<span class="badge text-bg-warning">Near</span>{% else %}<span class="badge text-bg-success">OK</span>{% endif %}</td>
+                    <td>
+                      <div class="small {% if row.queue_counts.sell_now or row.queue_counts.stop_breached or row.queue_counts.missing_stop %}text-danger{% else %}text-muted{% endif %}">Sell now: {{ row.queue_counts.sell_now }} · Stop breached: {{ row.queue_counts.stop_breached }} · Missing stop: {{ row.queue_counts.missing_stop }}</div>
+                      <div class="small {% if row.queue_counts.review_now or row.queue_counts.trim_or_exit or row.queue_counts.near_stop or row.queue_counts.missing_import %}text-warning-emphasis{% else %}text-muted{% endif %}">Review: {{ row.queue_counts.review_now }} · Trim: {{ row.queue_counts.trim_or_exit }} · Near stop: {{ row.queue_counts.near_stop }} · Missing import: {{ row.queue_counts.missing_import }}</div>
+                    </td>
+                    <td>{% if row.hot_symbols %}{% for symbol in row.hot_symbols %}<div class="small"><span class="fw-semibold">{{ symbol }}</span></div>{% endfor %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                    <td><a href="{% url 'portfolios:holdings' %}?status=OPEN&account={{ row.holdings_url_account|urlencode }}">Open</a></td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+
+        {% if stop_discipline_trends.period_rows %}
+          <hr class="my-4">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <div>
+              <h3 class="h6 mb-1">Stop-discipline trend analytics</h3>
+              <div class="small text-muted">Track whether Mike's stop execution hygiene is improving or degrading instead of only reading the latest transaction list.</div>
+            </div>
+            <div class="small {% if stop_discipline_trends.trend_direction == "DEGRADING" %}text-danger{% elif stop_discipline_trends.trend_direction == "IMPROVING" %}text-success{% else %}text-muted{% endif %}">{{ stop_discipline_trends.trend_label }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">30d hygiene score</div><div class="fw-semibold">{% if stop_discipline_trends.recent_30.hygiene_score is not None %}{{ stop_discipline_trends.recent_30.hygiene_score }}%{% else %}<span class="text-muted">—</span>{% endif %}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">30d debt rate</div><div class="fw-semibold {% if stop_discipline_trends.recent_30.debt_rate and stop_discipline_trends.recent_30.debt_rate > 0 %}text-danger{% endif %}">{% if stop_discipline_trends.recent_30.debt_rate is not None %}{{ stop_discipline_trends.recent_30.debt_rate }}%{% else %}<span class="text-muted">—</span>{% endif %}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Hygiene delta vs prior 30d</div><div class="fw-semibold {% if stop_discipline_trends.hygiene_delta is not None and stop_discipline_trends.hygiene_delta < 0 %}text-danger{% elif stop_discipline_trends.hygiene_delta is not None and stop_discipline_trends.hygiene_delta > 0 %}text-success{% endif %}">{% if stop_discipline_trends.hygiene_delta is not None %}{{ stop_discipline_trends.hygiene_delta }} pts{% else %}<span class="text-muted">—</span>{% endif %}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Debt delta vs prior 30d</div><div class="fw-semibold {% if stop_discipline_trends.debt_rate_delta is not None and stop_discipline_trends.debt_rate_delta > 0 %}text-danger{% elif stop_discipline_trends.debt_rate_delta is not None and stop_discipline_trends.debt_rate_delta < 0 %}text-success{% endif %}">{% if stop_discipline_trends.debt_rate_delta is not None %}{{ stop_discipline_trends.debt_rate_delta }} pts{% else %}<span class="text-muted">—</span>{% endif %}</div></div></div>
+          </div>
+          <div class="small text-muted mb-3">{{ stop_discipline_trends.trend_reason }}</div>
+          <div class="table-responsive mb-3">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Window</th><th>Events</th><th>Hygiene</th><th>Debt rate</th><th>Over / near</th><th>Missing-stop opens/adds</th></tr></thead>
+              <tbody>
+                {% for row in stop_discipline_trends.period_rows %}
+                <tr>
+                  <td>{{ row.label }}</td>
+                  <td>{{ row.count }}</td>
+                  <td>{% if row.hygiene_score is not None %}{{ row.hygiene_score }}%{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                  <td>{% if row.debt_rate is not None %}{{ row.debt_rate }}%{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                  <td><span class="small text-danger">{{ row.over_count }} over</span> · <span class="small text-warning-emphasis">{{ row.near_count }} near</span> · <span class="small text-success">{{ row.ok_count }} ok</span></td>
+                  <td>{% if row.missing_stop_events %}<span class="text-danger">{{ row.missing_stop_events }}</span>{% else %}<span class="text-muted">0</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% if stop_discipline_trends.account_rows %}
+          <div class="table-responsive mb-3">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Account</th><th>30d events</th><th>Hygiene</th><th>Debt rate</th><th>Over / near</th><th>Latest event</th></tr></thead>
+              <tbody>
+                {% for row in stop_discipline_trends.account_rows %}
+                <tr>
+                  <td>{{ row.account_label }}</td>
+                  <td>{{ row.count }}</td>
+                  <td>{% if row.hygiene_score is not None %}{{ row.hygiene_score }}%{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                  <td>{% if row.debt_rate is not None %}{{ row.debt_rate }}%{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                  <td><span class="small text-danger">{{ row.over_count }} over</span> · <span class="small text-warning-emphasis">{{ row.near_count }} near</span> · {% if row.missing_stop_events %}<span class="small text-danger">{{ row.missing_stop_events }} missing</span>{% else %}<span class="small text-muted">0 missing</span>{% endif %}</td>
+                  <td>{% if row.latest %}{{ row.latest.get_event_type_display }} · {{ row.latest.created_at }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+        {% endif %}
+
+        
+        {% if stop_policy_timeliness.recent_30.count %}
+          <hr class="my-4">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <div>
+              <h3 class="h6 mb-1">Stop-policy timeliness analytics</h3>
+              <div class="small text-muted">Measure how quickly Mike records or tightens a stop after each new open/add event. Current target: {{ stop_policy_timeliness.target_hours }}h.</div>
+            </div>
+            <div class="text-end">
+              <div class="small {% if stop_policy_timeliness.trend_direction == "DEGRADING" %}text-danger{% elif stop_policy_timeliness.trend_direction == "IMPROVING" %}text-success{% else %}text-muted{% endif %}">{{ stop_policy_timeliness.trend_label }}</div>
+              <div class="small mt-1"><a href="{% url 'portfolios:stop_policy_followup' %}{% if account_filter %}?account={{ account_filter }}{% endif %}">Open follow-up queue</a>{% if stop_policy_exception_trends.remediation_ready_count %} · <a href="{% url 'portfolios:stop_policy_followup' %}?policy_status=PENDING{% if account_filter %}&account={{ account_filter }}{% endif %}">Work recurring cleanup</a>{% endif %}</div>
+            </div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">30d on-time rate</div><div class="fw-semibold">{% if stop_policy_timeliness.recent_30.on_time_rate is not None %}{{ stop_policy_timeliness.recent_30.on_time_rate }}%{% else %}<span class="text-muted">—</span>{% endif %}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">30d pending rate</div><div class="fw-semibold {% if stop_policy_timeliness.recent_30.pending_rate and stop_policy_timeliness.recent_30.pending_rate > 0 %}text-danger{% endif %}">{% if stop_policy_timeliness.recent_30.pending_rate is not None %}{{ stop_policy_timeliness.recent_30.pending_rate }}%{% else %}<span class="text-muted">—</span>{% endif %}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Avg time to stop</div><div class="fw-semibold">{{ stop_policy_timeliness.recent_30.avg_resolution_label }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">On-time delta vs prior 30d</div><div class="fw-semibold {% if stop_policy_timeliness.on_time_delta is not None and stop_policy_timeliness.on_time_delta < 0 %}text-danger{% elif stop_policy_timeliness.on_time_delta is not None and stop_policy_timeliness.on_time_delta > 0 %}text-success{% endif %}">{% if stop_policy_timeliness.on_time_delta is not None %}{{ stop_policy_timeliness.on_time_delta }} pts{% else %}<span class="text-muted">—</span>{% endif %}</div></div></div>
+          </div>
+          <div class="small text-muted mb-3">{{ stop_policy_timeliness.trend_reason }}</div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Pending follow-up</div><div class="fw-semibold {% if stop_policy_timeliness.followup_summary.pending %}text-warning-emphasis{% endif %}">{{ stop_policy_timeliness.followup_summary.pending }}</div><div class="small mt-1"><a href="{% url 'portfolios:stop_policy_followup' %}?policy_status=PENDING{% if account_filter %}&account={{ account_filter }}{% endif %}">View pending queue</a></div></div></div>
+            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Overdue follow-up</div><div class="fw-semibold {% if stop_policy_timeliness.followup_summary.overdue %}text-danger{% else %}text-success{% endif %}">{{ stop_policy_timeliness.followup_summary.overdue }}</div><div class="small mt-1"><a href="{% url 'portfolios:stop_policy_followup' %}?policy_status=OVERDUE{% if account_filter %}&account={{ account_filter }}{% endif %}">Open overdue-only view</a></div></div></div>
+            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Late resolved</div><div class="fw-semibold {% if stop_policy_timeliness.followup_summary.late %}text-warning-emphasis{% endif %}">{{ stop_policy_timeliness.followup_summary.late }}</div><div class="small mt-1"><a href="{% url 'portfolios:stop_policy_followup' %}?policy_status=LATE{% if account_filter %}&account={{ account_filter }}{% endif %}">Review late history</a></div></div></div>
+          </div>
+          {% if stop_policy_timeliness.account_rows %}
+          <div class="table-responsive mb-3">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Account</th><th>30d open/adds</th><th>On-time</th><th>Late / pending</th><th>Avg time</th><th>Latest event</th></tr></thead>
+              <tbody>
+                {% for row in stop_policy_timeliness.account_rows %}
+                <tr>
+                  <td>{{ row.account_label }}</td>
+                  <td>{{ row.count }}</td>
+                  <td>{% if row.on_time_rate is not None %}{{ row.on_time_rate }}%{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                  <td><span class="small text-warning-emphasis">{{ row.late_count }} late</span> · <span class="small {% if row.pending_count %}text-danger{% else %}text-muted{% endif %}">{{ row.pending_count }} pending</span></td>
+                  <td>{{ row.avg_resolution_label }}</td>
+                  <td>{% if row.latest %}{{ row.latest.position.instrument.symbol }} · {{ row.latest.get_event_type_display }} · {{ row.latest.created_at }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+          <div class="table-responsive mb-3">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>When</th><th>Symbol</th><th>Account</th><th>Event</th><th>Policy status</th><th>Resolution time</th></tr></thead>
+              <tbody>
+                {% for item in stop_policy_timeliness.recent_rows %}
+                <tr>
+                  <td>{{ item.tx.created_at }}</td>
+                  <td><a href="{% url 'portfolios:holding_detail' item.tx.position.pk %}">{{ item.tx.position.instrument.symbol }}</a></td>
+                  <td>{{ item.account_label }}</td>
+                  <td>{{ item.tx.get_event_type_display }}</td>
+                  <td>{% if item.status == "ON_TIME" %}<span class="badge text-bg-success">On time</span>{% elif item.status == "LATE" %}<span class="badge text-bg-warning">Late</span>{% elif item.status == "PENDING" %}<span class="badge text-bg-danger">Pending</span>{% else %}<span class="badge text-bg-secondary">Unrecorded</span>{% endif %}</td>
+                  <td>{{ item.resolution_label }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+
+        {% if stop_policy_exception_trends.recent_30_count %}
+          <hr class="my-4">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <div>
+              <h3 class="h6 mb-1">Stop-policy exception trends</h3>
+              <div class="small text-muted">Track why stop-policy exceptions happen and whether the same names or accounts keep showing up in defer patterns.</div>
+            </div>
+            <div class="text-end">
+              <div class="small {% if stop_policy_exception_trends.trend_direction == "DEGRADING" %}text-danger{% elif stop_policy_exception_trends.trend_direction == "IMPROVING" %}text-success{% elif stop_policy_exception_trends.trend_direction == "WATCH" %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ stop_policy_exception_trends.trend_label }}</div>
+              <div class="small mt-1"><a href="{% url 'portfolios:stop_policy_followup' %}{% if account_filter %}?account={{ account_filter }}{% endif %}">Open follow-up queue</a>{% if stop_policy_exception_trends.remediation_ready_count %} · <a href="{% url 'portfolios:stop_policy_followup' %}?policy_status=PENDING{% if account_filter %}&account={{ account_filter }}{% endif %}">Work recurring cleanup</a>{% endif %}</div>
+            </div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">30d exceptions</div><div class="fw-semibold">{{ stop_policy_exception_trends.recent_30_count }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Delta vs prior 30d</div><div class="fw-semibold {% if stop_policy_exception_trends.exception_delta is not None and stop_policy_exception_trends.exception_delta > 0 %}text-danger{% elif stop_policy_exception_trends.exception_delta is not None and stop_policy_exception_trends.exception_delta < 0 %}text-success{% endif %}">{% if stop_policy_exception_trends.exception_delta is not None %}{{ stop_policy_exception_trends.exception_delta }}{% else %}<span class="text-muted">—</span>{% endif %}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Audit coverage</div><div class="fw-semibold">{% if stop_policy_exception_trends.audit_coverage_rate is not None %}{{ stop_policy_exception_trends.audit_coverage_rate }}%{% else %}<span class="text-muted">—</span>{% endif %}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Recurring symbols (90d)</div><div class="fw-semibold {% if stop_policy_exception_trends.recurring_symbol_count %}text-warning-emphasis{% endif %}">{{ stop_policy_exception_trends.recurring_symbol_count }}</div><div class="small mt-1">{% if stop_policy_exception_trends.playbook_rows %}<a href="{% url 'portfolios:stop_policy_followup' %}?reason={{ stop_policy_exception_trends.playbook_rows.0.code|urlencode }}{% if account_filter %}&account={{ account_filter }}{% endif %}">Open top playbook</a>{% else %}<span class="text-muted">No playbooks yet</span>{% endif %}</div></div></div>
+          </div>
+          <div class="small text-muted mb-3">{{ stop_policy_exception_trends.trend_reason }}</div>
+          {% if stop_policy_exception_trends.operations_summary.top_sla_reason_label %}
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Actionable reason buckets</div><div class="fw-semibold">{{ stop_policy_exception_trends.operations_summary.reasons_with_actionable }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Actionable exceptions</div><div class="fw-semibold {% if stop_policy_exception_trends.operations_summary.actionable_recent_count %}text-warning-emphasis{% endif %}">{{ stop_policy_exception_trends.operations_summary.actionable_recent_count }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Overdue exceptions</div><div class="fw-semibold {% if stop_policy_exception_trends.operations_summary.overdue_recent_count %}text-danger{% endif %}">{{ stop_policy_exception_trends.operations_summary.overdue_recent_count }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Top stale reason</div><div class="fw-semibold">{{ stop_policy_exception_trends.operations_summary.top_sla_reason_label }}</div><div class="small text-muted">{% if stop_policy_exception_trends.operations_summary.top_sla_reason_oldest_hours %}Oldest open item {{ stop_policy_exception_trends.operations_summary.top_sla_reason_oldest_hours }}h{% else %}No open aging{% endif %}</div><div class="small text-muted mt-1">Waiting+evidence {{ stop_policy_exception_trends.operations_summary.waiting_confirmation_with_evidence }}/{{ stop_policy_exception_trends.operations_summary.waiting_confirmation_count }} · broker-linked {{ stop_policy_exception_trends.operations_summary.waiting_confirmation_linked_count }} · unsupported {{ stop_policy_exception_trends.operations_summary.unsupported_waiting_confirmation_count }} · attachments {{ stop_policy_exception_trends.operations_summary.attachment_recent_count }} · expiring soon {{ stop_policy_exception_trends.operations_summary.attachment_expiring_soon_count }}</div></div></div>
+          </div>
+          {% endif %}
+          {% if stop_policy_exception_trends.reason_sla_rows %}
+          <div class="table-responsive mb-3">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Reason SLA</th><th>Actionable</th><th>Overdue rate</th><th>Open age</th><th>Evidence-backed</th><th></th></tr></thead>
+              <tbody>
+                {% for row in stop_policy_exception_trends.reason_sla_rows %}
+                <tr>
+                  <td>{{ row.label }}<div class="small text-muted">{{ row.symbol_count }} symbols · {{ row.account_count }} accounts</div></td>
+                  <td><span class="small {% if row.overdue %}text-danger{% elif row.actionable_count %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.actionable_count }}</span><div class="small text-muted">{{ row.overdue }} overdue · {{ row.pending_active }} pending · {{ row.late }} late</div></td>
+                  <td>{% if row.overdue_rate is not None %}<span class="{% if row.overdue_rate >= 50 %}text-danger{% elif row.overdue_rate > 0 %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.overdue_rate }}%</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                  <td>{% if row.avg_pending_hours is not None %}{{ row.avg_pending_hours }}h avg{% else %}<span class="text-muted">—</span>{% endif %}<div class="small text-muted">{% if row.oldest_pending_hours is not None %}{{ row.oldest_pending_hours }}h oldest{% else %}No open backlog{% endif %}</div></td>
+                  <td><span class="small {% if row.evidence_actionable_count %}text-info{% else %}text-muted{% endif %}">{{ row.evidence_actionable_count }}</span><div class="small text-muted">actionable rows with evidence</div></td>
+                  <td class="text-nowrap"><a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:stop_policy_followup' %}?reason={{ row.code|urlencode }}&policy_status=PENDING{% if account_filter %}&account={{ account_filter }}{% endif %}">Open SLA queue</a></td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+          {% if stop_policy_exception_trends.evidence_trend_rows %}
+          <div class="table-responsive mb-3">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Execution evidence trend</th><th>30d volume</th><th>Support mix</th><th>Actionable pressure</th><th></th></tr></thead>
+              <tbody>
+                {% for row in stop_policy_exception_trends.evidence_trend_rows %}
+                <tr>
+                  <td>{{ row.label }}<div class="small text-muted">{{ row.symbol_count }} symbols · {{ row.account_count }} accounts</div></td>
+                  <td>{{ row.count }}<div class="small {% if row.delta > 0 %}text-danger{% elif row.delta < 0 %}text-success{% else %}text-muted{% endif %}">Delta {{ row.delta }}</div></td>
+                  <td><span class="small {% if row.unsupported %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.supported }} supported · {{ row.unsupported }} unsupported</span><div class="small text-muted">{% if row.support_rate is not None %}{{ row.support_rate }}% with evidence{% else %}—{% endif %}</div></td>
+                  <td><span class="small {% if row.overdue %}text-danger{% elif row.actionable %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.actionable }}</span><div class="small text-muted">{{ row.overdue }} overdue · {{ row.pending }} pending · {{ row.late }} late</div></td>
+                  <td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:stop_policy_followup' %}?evidence_type={{ row.code|urlencode }}&policy_status=PENDING{% if account_filter %}&account={{ account_filter }}{% endif %}">Open evidence queue</a></td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+          {% if stop_policy_exception_trends.evidence_quality_rows %}
+          <div class="table-responsive mb-3">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Evidence quality</th><th>30d volume</th><th>Support mix</th><th>Actionable pressure</th><th></th></tr></thead>
+              <tbody>
+                {% for row in stop_policy_exception_trends.evidence_quality_rows %}
+                <tr>
+                  <td>{{ row.label }}<div class="small text-muted">{{ row.symbol_count }} symbols · {{ row.account_count }} accounts</div></td>
+                  <td>{{ row.count }}<div class="small {% if row.delta > 0 %}text-danger{% elif row.delta < 0 %}text-success{% else %}text-muted{% endif %}">Delta {{ row.delta }}</div></td>
+                  <td><span class="small {% if row.unsupported %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.supported }} supported · {{ row.unsupported }} unsupported</span><div class="small text-muted">{% if row.support_rate is not None %}{{ row.support_rate }}% with evidence{% else %}—{% endif %}</div></td>
+                  <td><span class="small {% if row.overdue %}text-danger{% elif row.actionable %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.actionable }}</span><div class="small text-muted">{{ row.overdue }} overdue · {{ row.pending }} pending · {{ row.late }} late</div></td>
+                  <td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:stop_policy_followup' %}?evidence_quality={{ row.code|urlencode }}&policy_status=PENDING{% if account_filter %}&account={{ account_filter }}{% endif %}">Open quality queue</a></td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+          {% if stop_policy_exception_trends.reason_rows %}
+          <div class="table-responsive mb-3">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Reason</th><th>30d count</th><th>Delta vs prior</th><th>Overdue / pending / late</th><th>Symbols</th><th>Accounts</th></tr></thead>
+              <tbody>
+                {% for row in stop_policy_exception_trends.reason_rows %}
+                <tr>
+                  <td>{{ row.label }}</td>
+                  <td>{{ row.count }}</td>
+                  <td><span class="{% if row.delta > 0 %}text-danger{% elif row.delta < 0 %}text-success{% else %}text-muted{% endif %}">{{ row.delta }}</span></td>
+                  <td><span class="small {% if row.overdue %}text-danger{% else %}text-muted{% endif %}">{{ row.overdue }} overdue</span> · <span class="small {% if row.pending %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.pending }} pending</span> · <span class="small {% if row.late %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.late }} late</span></td>
+                  <td>{{ row.symbol_count }}</td>
+                  <td>{{ row.account_count }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+          <div class="row g-3">
+            {% if stop_policy_exception_trends.account_rows %}
+            <div class="col-lg-6">
+              <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                  <thead><tr><th>Account</th><th>Exceptions</th><th>Reason coverage</th><th>Top reason</th></tr></thead>
+                  <tbody>
+                    {% for row in stop_policy_exception_trends.account_rows %}
+                    <tr>
+                      <td>{{ row.account_label }}</td>
+                      <td><span class="small {% if row.overdue %}text-danger{% else %}text-muted{% endif %}">{{ row.count }}</span></td>
+                      <td>{% if row.coverage_rate is not None %}{{ row.coverage_rate }}%{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                      <td>{{ row.top_reason }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {% endif %}
+            {% if stop_policy_exception_trends.recurring_symbol_rows %}
+            <div class="col-lg-6">
+              <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                  <thead><tr><th>Recurring symbol</th><th>90d exceptions</th><th>Top reason</th><th>Latest</th></tr></thead>
+                  <tbody>
+                    {% for row in stop_policy_exception_trends.recurring_symbol_rows %}
+                    <tr>
+                      <td>{{ row.symbol }}<div class="small text-muted">{{ row.account_label }}</div></td>
+                      <td><span class="small {% if row.actionable_count %}text-danger{% else %}text-warning-emphasis{% endif %}">{{ row.count }}</span><div class="small text-muted">{{ row.actionable_count }} actionable</div></td>
+                      <td>{{ row.top_reason }}</td>
+                      <td>
+                        {{ row.latest_tx.created_at }}
+                        <div class="small mt-1"><a href="{% url 'portfolios:stop_policy_followup' %}?symbol={{ row.symbol|urlencode }}&policy_status=PENDING{% if account_filter %}&account={{ account_filter }}{% endif %}">Open queue</a>{% if row.needs_action %} · <a href="{% url 'portfolios:holding_edit' row.position_id %}">{{ row.remediation_label }}</a>{% else %} · <a href="{% url 'portfolios:holding_detail' row.position_id %}">{{ row.remediation_label }}</a>{% endif %}</div>
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+        {% endif %}
+
+        {% if stop_discipline_history.rows %}
+          <hr class="my-4">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <div>
+              <h3 class="h6 mb-1">Stop-discipline history</h3>
+              <div class="small text-muted">New holding transactions now snapshot stop posture so Mike can review whether adds, trims, and closes happened under good discipline or under pressure.</div>
+            </div>
+            <div class="small text-muted">Recent events: {{ stop_discipline_history.count }}</div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Over posture events</div><div class="fw-semibold text-danger">{{ stop_discipline_history.posture_counts.OVER|default:0 }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Near posture events</div><div class="fw-semibold text-warning-emphasis">{{ stop_discipline_history.posture_counts.NEAR|default:0 }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">OK events</div><div class="fw-semibold text-success">{{ stop_discipline_history.posture_counts.OK|default:0 }}</div></div></div>
+            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Missing-stop opens/adds</div><div class="fw-semibold {% if stop_discipline_history.missing_stop_events %}text-danger{% else %}text-success{% endif %}">{{ stop_discipline_history.missing_stop_events }}</div></div></div>
+          </div>
+          {% if stop_discipline_history.account_rows %}
+          <div class="table-responsive mb-3">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Account</th><th>Events</th><th>Over / near</th><th>Missing-stop opens/adds</th><th>Last event</th></tr></thead>
+              <tbody>
+                {% for row in stop_discipline_history.account_rows %}
+                <tr>
+                  <td>{{ row.account_label }}</td>
+                  <td>{{ row.event_count }}</td>
+                  <td><span class="small text-danger">{{ row.over_count }} over</span> · <span class="small text-warning-emphasis">{{ row.near_count }} near</span></td>
+                  <td>{% if row.missing_stop_events %}<span class="text-danger">{{ row.missing_stop_events }}</span>{% else %}<span class="text-muted">0</span>{% endif %}</td>
+                  <td>{% if row.last_tx %}{{ row.last_tx.get_event_type_display }} · {{ row.last_tx.created_at }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>When</th><th>Symbol</th><th>Account</th><th>Event</th><th>Stop</th><th>Guardrail</th></tr></thead>
+              <tbody>
+                {% for item in stop_discipline_history.rows %}
+                <tr>
+                  <td>{{ item.tx.created_at }}</td>
+                  <td><a href="{% url 'portfolios:holding_detail' item.tx.position.pk %}">{{ item.tx.position.instrument.symbol }}</a></td>
+                  <td>{{ item.account_label }}</td>
+                  <td>{{ item.tx.get_event_type_display }}</td>
+                  <td>{% if item.has_stop %}{{ item.tx.stop_price_snapshot }}{% else %}<span class="text-muted">None</span>{% endif %}</td>
+                  <td>{% if item.posture == "OVER" %}<span class="badge text-bg-danger">Over</span>{% elif item.posture == "NEAR" %}<span class="badge text-bg-warning">Near</span>{% elif item.posture == "OK" %}<span class="badge text-bg-success">OK</span>{% else %}<span class="badge text-bg-secondary">Unrecorded</span>{% endif %}<div class="small text-muted mt-1">{{ item.tx.risk_guardrail_reason_snapshot|default:"No snapshot recorded." }}</div></td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

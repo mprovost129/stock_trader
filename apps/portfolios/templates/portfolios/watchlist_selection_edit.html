@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Edit {{ selection.instrument.symbol }}{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h1 class="h3 mb-1">Edit {{ selection.instrument.symbol }}</h1>
+    <div class="text-muted small">Set priority, sector/theme, and a short operator note so the active watchlist stays usable during daily review.</div>
+  </div>
+  <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:watchlist' %}">Back to watchlist</a>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="small text-muted mb-3">Active watchlist: {{ watchlist.name }}</div>
+        <form method="post" class="row g-3">
+          {% csrf_token %}
+          <div class="col-md-4">
+            <label class="form-label small text-muted">Priority</label>
+            {{ form.priority }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small text-muted">Sector / theme</label>
+            {{ form.sector }}
+          </div>
+          <div class="col-md-12">
+            <label class="form-label small text-muted">Note</label>
+            {{ form.note }}
+          </div>
+          <div class="col-12 d-flex gap-2">
+            <button class="btn btn-primary">Save watchlist settings</button>
+            <a class="btn btn-outline-secondary" href="{% url 'portfolios:watchlist' %}">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h5 mb-2">What this does</h2>
+        <div class="text-muted small mb-3">Priority is a watchlist management aid. It does not force a trade or change scoring. It helps you separate names that deserve attention first from names you just want to keep in the universe.</div>
+        <ul class="small text-muted mb-0">
+          <li class="mb-2"><strong>High priority</strong>: first-pass names for daily review.</li>
+          <li class="mb-2"><strong>Normal</strong>: standard active universe names.</li>
+          <li><strong>Low</strong>: keep visible, but lower urgency.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

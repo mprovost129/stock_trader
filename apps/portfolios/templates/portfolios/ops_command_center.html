@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+
+{% block title %}Ops Command Center{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h1 class="h3 mb-1">Ops Command Center</h1>
+    <div class="text-muted small">One screen for delivery trust, stop-policy queue pressure, evidence lifecycle work, and broker-reconciliation posture.</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:home' %}">Dashboard</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:risk_settings' %}">Allocation Controls</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <div class="small text-muted">Actionable stop-policy rows</div>
+      <div class="display-6 fw-semibold">{{ followup.count }}</div>
+      <div class="small mt-2">{{ followup.summary.overdue }} overdue · {{ followup.summary.pending }} pending</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <div class="small text-muted">Evidence lifecycle queue</div>
+      <div class="display-6 fw-semibold">{{ evidence_lifecycle_automation.queue_pressure }}</div>
+      <div class="small mt-2">{{ evidence_lifecycle_automation.expired_count }} expired · {{ evidence_lifecycle_automation.missing_retention_count }} missing retention</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <div class="small text-muted">Alert delivery</div>
+      <div class="display-6 fw-semibold">{{ delivery_health.overall_status }}</div>
+      <div class="small mt-2">{{ delivery_health.failed_last_window }} failed / {{ delivery_health.sent_last_window }} sent in window</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <div class="small text-muted">Portfolio health score</div>
+      <div class="display-6 fw-semibold">{{ portfolio_health.overall_score }}</div>
+      <div class="small mt-2">{{ portfolio_health.overall_grade_label }} · {{ portfolio_health.attention_count }} attention</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <div class="small text-muted">Broker drift posture</div>
+      <div class="display-6 fw-semibold">{{ broker_snapshot_posture.drift_posture|default:"NONE" }}</div>
+      <div class="small mt-2">{% if broker_snapshot_posture.latest %}Latest snapshot {{ broker_snapshot_posture.latest.as_of|date:"Y-m-d H:i" }}{% else %}No broker snapshot yet{% endif %}</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-xl-7">
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <div>
+            <h2 class="h5 mb-1">Portfolio health score</h2>
+            <div class="small text-muted">A single weighted score for account posture, stop debt, drawdown stress, and reconciliation debt.</div>
+          </div>
+          {% if portfolio_health_history.latest %}<div class="small text-muted text-end me-2">Latest snapshot {{ portfolio_health_history.latest.created_at|date:"Y-m-d H:i" }}</div>{% endif %}<div class="d-flex gap-2"><form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="save_portfolio_health_snapshot" value="1"><button class="btn btn-sm btn-primary">Save snapshot</button></form><a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:portfolio_health_score' %}">Open scorecard</a></div>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-sm-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Overall score</div><div class="fw-semibold">{{ portfolio_health.overall_score }}</div></div></div>
+          <div class="col-sm-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Attention accounts</div><div class="fw-semibold">{{ portfolio_health.attention_count }}</div></div></div>
+          <div class="col-sm-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Urgent accounts</div><div class="fw-semibold">{{ portfolio_health.urgent_count }}</div></div></div>
+        </div>
+        {% if portfolio_health.weakest_account %}<div class="small text-muted mb-2">Weakest account right now: <span class="fw-semibold text-body">{{ portfolio_health.weakest_account.account_label }}</span> (score {{ portfolio_health.weakest_account.score }}).</div>{% endif %}{% if portfolio_health_history.score_delta is not None %}<div class="small text-muted mb-3">Snapshot trend: {{ portfolio_health_history.trend|title }} · score delta {{ portfolio_health_history.score_delta }} · urgent delta {{ portfolio_health_history.urgent_delta|default:0 }}</div>{% endif %}
+        {% if portfolio_health.rows %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Account</th><th>Score</th><th>Debt</th><th>Next action</th></tr></thead>
+              <tbody>
+                {% for row in portfolio_health.rows|slice:":5" %}
+                  <tr>
+                    <td>{{ row.account_label }}</td>
+                    <td><span class="fw-semibold">{{ row.score }}</span><div class="small text-muted">{{ row.grade_label }}</div></td>
+                    <td><span class="small {% if row.sell_now_count or row.missing_stop_count or row.unresolved_count %}text-danger{% else %}text-muted{% endif %}">{{ row.sell_now_count }} sell · {{ row.missing_stop_count }} missing stop · {{ row.unresolved_count }} unresolved</span></td>
+                    <td><div class="small">{{ row.actions.0 }}</div></td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="small text-muted">No account-level health score is available yet.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <div>
+            <h2 class="h5 mb-1">Stop-policy queue</h2>
+            <div class="small text-muted">Highest-priority unresolved stop-policy items across accounts.</div>
+          </div>
+          <a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:stop_policy_followup' %}">Open queue</a>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-sm-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Overdue</div><div class="fw-semibold">{{ followup.summary.overdue }}</div></div></div>
+          <div class="col-sm-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Pending</div><div class="fw-semibold">{{ followup.summary.pending }}</div></div></div>
+          <div class="col-sm-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Late resolved</div><div class="fw-semibold">{{ followup.summary.late }}</div></div></div>
+          <div class="col-sm-3"><div class="border rounded p-2 h-100"><div class="small text-muted">With evidence</div><div class="fw-semibold">{{ followup.with_evidence_count }}</div></div></div>
+        </div>
+        {% if followup.rows %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Symbol</th><th>Account</th><th>Status</th><th>Reason</th><th>Evidence</th></tr></thead>
+              <tbody>
+                {% for row in followup.rows %}
+                  <tr>
+                    <td class="fw-semibold">{{ row.symbol }}</td>
+                    <td>{{ row.account_label }}</td>
+                    <td><span class="badge {% if row.bucket == 'PENDING_OVERDUE' %}text-bg-danger{% elif row.bucket == 'PENDING_ACTIVE' %}text-bg-warning{% elif row.bucket == 'LATE_RESOLVED' %}text-bg-secondary{% else %}text-bg-success{% endif %}">{{ row.bucket_label }}</span><div class="small text-muted mt-1">{{ row.age_label }}</div></td>
+                    <td>{% if row.reason_label %}{{ row.reason_label }}{% else %}<span class="text-muted">No reason saved</span>{% endif %}</td>
+                    <td>
+                      {% if row.has_execution_evidence %}
+                        <div>{{ row.execution_evidence_label|default:"Evidence saved" }}</div>
+                        {% if row.execution_evidence_quality_label %}<div class="small text-muted">{{ row.execution_evidence_quality_label }}</div>{% endif %}
+                      {% else %}
+                        <span class="text-muted">No evidence</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="small text-muted">No stop-policy rows are currently queued.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <div>
+            <h2 class="h5 mb-1">Evidence lifecycle</h2>
+            <div class="small text-muted">Attachment retention posture plus direct lifecycle actions.</div>
+          </div>
+          <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:stop_policy_followup' %}?retention=EXPIRING_SOON">Review expiring</a>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-sm-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Attachments</div><div class="fw-semibold">{{ evidence_lifecycle_automation.attachment_count }}</div></div></div>
+          <div class="col-sm-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Expiring soon</div><div class="fw-semibold">{{ evidence_lifecycle_automation.expiring_soon_count }}</div></div></div>
+          <div class="col-sm-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Expired</div><div class="fw-semibold">{{ evidence_lifecycle_automation.expired_count }}</div></div></div>
+          <div class="col-sm-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Missing retention</div><div class="fw-semibold">{{ evidence_lifecycle_automation.missing_retention_count }}</div></div></div>
+        </div>
+        <div class="small text-muted mb-3">{{ evidence_lifecycle_automation.recommended_action }}</div>
+        <div class="d-flex gap-2 mb-3">
+          <form method="post" class="d-inline">
+            {% csrf_token %}
+            <input type="hidden" name="save_evidence_lifecycle_run" value="1">
+            <input type="hidden" name="lifecycle_mode" value="SCAN">
+            <button class="btn btn-outline-primary">Run lifecycle scan</button>
+          </form>
+          <form method="post" class="d-inline">
+            {% csrf_token %}
+            <input type="hidden" name="save_evidence_lifecycle_run" value="1">
+            <input type="hidden" name="lifecycle_mode" value="ARCHIVE_EXPIRED">
+            <button class="btn btn-outline-danger" onclick="return confirm('Archive and clear every expired evidence attachment now?');">Archive expired attachments</button>
+          </form>
+        </div>
+        {% if evidence_lifecycle_automation.recent_runs %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Run time</th><th>Mode</th><th>Notes</th><th>Archived</th></tr></thead>
+              <tbody>
+                {% for run in evidence_lifecycle_automation.recent_runs %}
+                  <tr>
+                    <td>{{ run.created_at|date:"Y-m-d H:i" }}</td>
+                    <td>{{ run.archive_expired|yesno:"Archive expired,Scan only" }}</td>
+                    <td>{{ run.notes|default:"—" }}</td>
+                    <td>{{ run.archived_count }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <div>
+            <h2 class="h5 mb-1">Broker reconciliation and snapshot posture</h2>
+            <div class="small text-muted">Latest external-account evidence and drift workflow.</div>
+          </div>
+          <a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:broker_position_reconciliation' %}">Open broker reconciliation</a>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-sm-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Snapshot status</div><div class="fw-semibold">{{ broker_snapshot_posture.drift_posture|default:"NONE" }}</div></div></div>
+          <div class="col-sm-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Tracked market value</div><div class="fw-semibold">{% if broker_snapshot_posture.tracked_market_value %}${{ broker_snapshot_posture.tracked_market_value|floatformat:2 }}{% else %}—{% endif %}</div></div></div>
+          <div class="col-sm-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Broker invested capital</div><div class="fw-semibold">{% if broker_snapshot_posture.broker_invested_capital %}${{ broker_snapshot_posture.broker_invested_capital|floatformat:2 }}{% else %}—{% endif %}</div></div></div>
+        </div>
+        {% if recent_broker_runs %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Run</th><th>Account</th><th>Unresolved</th><th></th></tr></thead>
+              <tbody>
+                {% for run in recent_broker_runs %}
+                  <tr>
+                    <td>{{ run.created_at|date:"Y-m-d H:i" }}</td>
+                    <td>{{ run.account_label|default:run.source_label }}</td>
+                    <td>{{ run.unresolved_count }}</td>
+                    <td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:broker_position_reconciliation_run_detail' run.id %}">Open</a></td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="small text-muted">No broker reconciliation runs recorded yet.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-5">
+    <div class="card shadow-sm mb-3"><div class="card-body">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+          <h2 class="h5 mb-1">Delivery trust</h2>
+          <div class="small text-muted">Channel health, recent failures, and operator notices.</div>
+        </div>
+      </div>
+      <div class="small text-muted mb-2">Enabled channels: {% for channel in delivery_channels %}<span class="badge text-bg-light me-1">{{ channel }}</span>{% empty %}<span>None</span>{% endfor %}</div>
+      <div class="row g-2 mb-3">
+        <div class="col-sm-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Overall status</div><div class="fw-semibold">{{ delivery_health.overall_status }}</div></div></div>
+        <div class="col-sm-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Recent sent</div><div class="fw-semibold">{{ delivery_health.sent_last_window }}</div></div></div>
+        <div class="col-sm-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Recent failed</div><div class="fw-semibold">{{ delivery_health.failed_last_window }}</div></div></div>
+      </div>
+      {% if recent_failed_alerts %}
+        <div class="fw-semibold small mb-2">Recent failed deliveries</div>
+        <div class="table-responsive mb-3"><table class="table table-sm align-middle mb-0">
+          <thead><tr><th>When</th><th>Channel</th><th>Status</th></tr></thead>
+          <tbody>
+          {% for alert in recent_failed_alerts %}
+            <tr><td>{{ alert.created_at|date:"Y-m-d H:i" }}</td><td>{{ alert.channel }}</td><td>{{ alert.status }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table></div>
+      {% endif %}
+      {% if recent_operator_notifications %}
+        <div class="fw-semibold small mb-2">Recent operator notices</div>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+          <thead><tr><th>When</th><th>Type</th><th>Summary</th></tr></thead>
+          <tbody>
+          {% for item in recent_operator_notifications %}
+            <tr><td>{{ item.created_at|date:"Y-m-d H:i" }}</td><td>{{ item.get_kind_display }}</td><td>{{ item.headline }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table></div>
+      {% endif %}
+    </div></div>
+
+    <div class="card shadow-sm mb-3"><div class="card-body">
+      <h2 class="h5 mb-3">Account posture roll-up</h2>
+      <div class="row g-2">
+        <div class="col-sm-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Open holding accounts</div><div class="fw-semibold">{{ account_holding_queues.account_count }}</div></div></div>
+        <div class="col-sm-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Accounts with stop pressure</div><div class="fw-semibold">{{ account_stop_guardrails.posture_counts.OVER|default:0 }}</div></div></div>
+        <div class="col-sm-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Accounts with drawdown warnings</div><div class="fw-semibold">{{ account_drawdown_monitoring.posture_counts.STRESSED|add:account_drawdown_monitoring.posture_counts.WARNING }}</div></div></div>
+        <div class="col-sm-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Risk posture rows</div><div class="fw-semibold">{{ account_risk_posture.count|default:0 }}</div></div></div>
+      </div>
+      {% if account_holding_queues.rows %}
+        <div class="table-responsive mt-3"><table class="table table-sm align-middle mb-0">
+          <thead><tr><th>Account</th><th>Urgent</th><th>Review</th><th>Open</th></tr></thead>
+          <tbody>
+          {% for row in account_holding_queues.rows|slice:":8" %}
+            <tr><td>{{ row.account_label }}</td><td>{{ row.queue_counts.sell_now }}</td><td>{{ row.queue_counts.review_now|add:row.queue_counts.trim_or_exit }}</td><td>{{ row.open_count }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table></div>
+      {% endif %}
+    </div></div>
+
+    <div class="card shadow-sm"><div class="card-body">
+      <h2 class="h5 mb-3">Timeliness and exception trend</h2>
+      <div class="row g-2 mb-3">
+        <div class="col-sm-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Resolved on time</div><div class="fw-semibold">{{ stop_policy_timeliness.on_time_count }}</div></div></div>
+        <div class="col-sm-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Resolved late</div><div class="fw-semibold">{{ stop_policy_timeliness.late_count }}</div></div></div>
+      </div>
+      {% if stop_policy_exception_trends.reason_rows %}
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+          <thead><tr><th>Reason</th><th>Count</th></tr></thead>
+          <tbody>
+          {% for row in stop_policy_exception_trends.reason_rows|slice:":8" %}
+            <tr><td>{{ row.label }}</td><td>{{ row.count }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table></div>
+      {% else %}
+        <div class="small text-muted">No exception-trend history yet.</div>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+{% endblock %}

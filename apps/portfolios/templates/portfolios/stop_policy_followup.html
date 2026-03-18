@@ -1,0 +1,673 @@
+{% extends "base.html" %}
+
+{% block title %}Stop-policy follow-up{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h1 class="h3 mb-1">Stop-policy follow-up</h1>
+    <div class="text-muted small">Work the late and pending stop-policy debt directly. This queue keeps open/add events visible until the stop is recorded, tightened, or intentionally reviewed.</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:risk_settings' %}{% if account_filter %}?account={{ account_filter }}{% endif %}">Back to Allocation Controls</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}?status=OPEN{% if account_filter %}&account={{ account_filter }}{% endif %}">Open holdings</a>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label">Account</label>
+        <select name="account" class="form-select">
+          <option value="">All accounts</option>
+          {% for option in account_options %}
+            <option value="{{ option }}" {% if account_filter == option %}selected{% endif %}>{% if option == "__UNLABELED__" %}Unlabeled / blended{% else %}{{ option }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Policy bucket</label>
+        <select name="policy_status" class="form-select">
+          <option value="ACTIONABLE" {% if status_filter == "ACTIONABLE" %}selected{% endif %}>Actionable only</option>
+          <option value="PENDING" {% if status_filter == "PENDING" %}selected{% endif %}>Pending</option>
+          <option value="OVERDUE" {% if status_filter == "OVERDUE" %}selected{% endif %}>Overdue pending</option>
+          <option value="LATE" {% if status_filter == "LATE" %}selected{% endif %}>Late resolved</option>
+          <option value="ON_TIME" {% if status_filter == "ON_TIME" %}selected{% endif %}>On time</option>
+          <option value="ALL" {% if status_filter == "ALL" %}selected{% endif %}>All</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Event type</label>
+        <select name="event_type" class="form-select">
+          <option value="" {% if not event_filter %}selected{% endif %}>Open + add shares</option>
+          <option value="OPEN" {% if event_filter == "OPEN" %}selected{% endif %}>Open only</option>
+          <option value="BUY_ADD" {% if event_filter == "BUY_ADD" %}selected{% endif %}>Add shares only</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Symbol</label>
+        <input type="text" name="symbol" value="{{ symbol_filter }}" class="form-control" placeholder="AAPL">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Reason code</label>
+        <select name="reason" class="form-select">
+          <option value="" {% if not reason_filter %}selected{% endif %}>All reasons</option>
+          <option value="__UNSPECIFIED__" {% if reason_filter == "__UNSPECIFIED__" %}selected{% endif %}>No reason saved</option>
+          {% for code, label in stop_policy_note_form.fields.reason_code.choices %}
+            {% if code %}<option value="{{ code }}" {% if reason_filter == code %}selected{% endif %}>{{ label }}</option>{% endif %}
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Execution evidence</label>
+        <select name="evidence_status" class="form-select">
+          <option value="" {% if not evidence_filter %}selected{% endif %}>All evidence states</option>
+          <option value="WITH_EVIDENCE" {% if evidence_filter == "WITH_EVIDENCE" %}selected{% endif %}>Has evidence</option>
+          <option value="WITHOUT_EVIDENCE" {% if evidence_filter == "WITHOUT_EVIDENCE" %}selected{% endif %}>No evidence</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Evidence type</label>
+        <select name="evidence_type" class="form-select">
+          <option value="" {% if not evidence_type_filter %}selected{% endif %}>All evidence types</option>
+          <option value="__NONE__" {% if evidence_type_filter == "__NONE__" %}selected{% endif %}>No evidence type saved</option>
+          {% for code, label in stop_policy_note_form.fields.evidence_type.choices %}
+            {% if code %}<option value="{{ code }}" {% if evidence_type_filter == code %}selected{% endif %}>{{ label }}</option>{% endif %}
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Evidence quality</label>
+        <select name="evidence_quality" class="form-select">
+          <option value="" {% if not evidence_quality_filter %}selected{% endif %}>All quality levels</option>
+          <option value="__UNRATED__" {% if evidence_quality_filter == "__UNRATED__" %}selected{% endif %}>Unrated evidence</option>
+          {% for code, label in stop_policy_note_form.fields.evidence_quality.choices %}
+            {% if code %}<option value="{{ code }}" {% if evidence_quality_filter == code %}selected{% endif %}>{{ label }}</option>{% endif %}
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Retention queue</label>
+        <select name="retention" class="form-select">
+          <option value="" {% if not retention_filter %}selected{% endif %}>All retention states</option>
+          <option value="ATTACHMENT" {% if retention_filter == "ATTACHMENT" %}selected{% endif %}>Has attachment</option>
+          <option value="TEXT_ONLY" {% if retention_filter == "TEXT_ONLY" %}selected{% endif %}>Text-only evidence</option>
+          <option value="EXPIRING_SOON" {% if retention_filter == "EXPIRING_SOON" %}selected{% endif %}>Expiring soon</option>
+          <option value="EXPIRED" {% if retention_filter == "EXPIRED" %}selected{% endif %}>Expired</option>
+          <option value="MISSING_RETENTION" {% if retention_filter == "MISSING_RETENTION" %}selected{% endif %}>Missing retention</option>
+        </select>
+      </div>
+      <div class="col-12 d-flex gap-2">
+        <button class="btn btn-primary">Apply filters</button>
+        <a class="btn btn-outline-secondary" href="{% url 'portfolios:stop_policy_followup' %}">Reset</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="border rounded p-3 bg-light-subtle mb-3">
+  <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+    <div>
+      <h2 class="h5 mb-1">Evidence lifecycle automation</h2>
+      <div class="small text-muted">Run an operator-triggered scan to refresh expiring / expired attachment posture, or archive expired attachments after review.</div>
+      <div class="small text-muted mt-1">{% if evidence_lifecycle_automation.last_run %}Last run {{ evidence_lifecycle_automation.last_run.created_at|date:"Y-m-d H:i" }} · {% if evidence_lifecycle_automation.last_run.archive_expired %}archive mode{% else %}scan mode{% endif %} · {{ evidence_lifecycle_automation.last_run.notes|default:"no notes" }}{% else %}No lifecycle run recorded yet.{% endif %}</div>
+    </div>
+    <form method="post" class="d-flex gap-2 flex-wrap">
+      {% csrf_token %}
+      <input type="hidden" name="save_evidence_lifecycle_run" value="1">
+      <select name="lifecycle_mode" class="form-select form-select-sm">
+        <option value="SCAN">Scan only</option>
+        <option value="ARCHIVE_EXPIRED">Archive expired attachments</option>
+      </select>
+      <button class="btn btn-sm btn-primary">Run lifecycle scan</button>
+    </form>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-2"><div class="border rounded p-3 h-100"><div class="small text-muted">Overdue pending</div><div class="h4 mb-0 {% if followup.summary.overdue %}text-danger{% else %}text-success{% endif %}">{{ followup.summary.overdue }}</div></div></div>
+  <div class="col-md-2"><div class="border rounded p-3 h-100"><div class="small text-muted">Active pending</div><div class="h4 mb-0 {% if followup.summary.pending %}text-warning-emphasis{% endif %}">{{ followup.summary.pending }}</div></div></div>
+  <div class="col-md-2"><div class="border rounded p-3 h-100"><div class="small text-muted">Late resolved</div><div class="h4 mb-0 {% if followup.summary.late %}text-warning-emphasis{% endif %}">{{ followup.summary.late }}</div></div></div>
+  <div class="col-md-2"><div class="border rounded p-3 h-100"><div class="small text-muted">Rows with evidence</div><div class="h4 mb-0 {% if followup.with_evidence_count %}text-info{% endif %}">{{ followup.with_evidence_count }}</div><div class="small text-muted mt-1">{{ followup.without_evidence_count }} without evidence · {{ stop_policy_exception_trends.operations_summary.unrated_evidence_count|default:0 }} unrated</div></div></div>
+  <div class="col-md-2"><div class="border rounded p-3 h-100"><div class="small text-muted">Waiting + evidence</div><div class="h4 mb-0 {% if stop_policy_exception_trends.operations_summary.waiting_confirmation_with_evidence %}text-info{% endif %}">{{ stop_policy_exception_trends.operations_summary.waiting_confirmation_with_evidence }}</div><div class="small text-muted mt-1">{{ stop_policy_exception_trends.operations_summary.waiting_confirmation_without_evidence }} still unsupported</div></div></div>
+  <div class="col-md-2"><div class="border rounded p-3 h-100"><div class="small text-muted">30d on-time rate</div><div class="h4 mb-0">{% if stop_policy_timeliness.recent_30.on_time_rate is not None %}{{ stop_policy_timeliness.recent_30.on_time_rate }}%{% else %}<span class="text-muted">—</span>{% endif %}</div><div class="small text-muted mt-1">{{ followup.noted_count }} rows have an audit reason/note.</div></div></div>
+  <div class="col-md-2"><div class="border rounded p-3 h-100"><div class="small text-muted">Retention queue</div><div class="h4 mb-0 {% if followup.retention_summary.expired_count %}text-danger{% elif followup.retention_summary.expiring_soon_count %}text-warning-emphasis{% endif %}">{{ followup.retention_summary.expired_count|add:followup.retention_summary.expiring_soon_count }}</div><div class="small text-muted mt-1">{{ followup.retention_summary.expired_count }} expired · {{ followup.retention_summary.expiring_soon_count }} expiring soon</div></div></div>
+</div>
+
+
+{% if symbol_filter or reason_filter or evidence_filter or evidence_type_filter or evidence_quality_filter or retention_filter %}
+<div class="alert alert-secondary py-2 px-3 mb-3">
+  {% if symbol_filter %}Filtered to symbol <strong>{{ symbol_filter }}</strong>{% endif %}
+  {% if symbol_filter and reason_filter %} · {% endif %}
+  {% if reason_filter %}Filtered to reason <strong>{{ reason_filter_label }}</strong>{% endif %}
+  {% if reason_filter and evidence_filter %} · {% endif %}
+  {% if evidence_filter %}Evidence filter <strong>{% if evidence_filter == "WITH_EVIDENCE" %}Has evidence{% else %}No evidence{% endif %}</strong>{% endif %}{% if evidence_filter and evidence_type_filter %} · {% endif %}{% if evidence_type_filter %}Evidence type <strong>{{ evidence_type_filter_label }}</strong>{% endif %}{% if evidence_type_filter and evidence_quality_filter %} · {% endif %}{% if evidence_quality_filter %}Evidence quality <strong>{{ evidence_quality_filter_label }}</strong>{% endif %}{% if evidence_quality_filter and retention_filter %} · {% endif %}{% if retention_filter %}Retention <strong>{{ retention_filter_label }}</strong>{% endif %}.
+  <a href="{% url 'portfolios:stop_policy_followup' %}{% if account_filter %}?account={{ account_filter }}{% endif %}">Clear extra filters</a>
+</div>
+{% endif %}
+
+{% if stop_policy_exception_trends.playbook_rows %}
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <h2 class="h5 mb-1">Reason-code remediation playbooks</h2>
+        <div class="small text-muted">Open the right queue by reason so repeated defer patterns turn into repeatable cleanup workflows instead of one-off manual judgment.</div>
+      </div>
+      <div class="small text-muted">{{ stop_policy_exception_trends.playbook_rows|length }} active playbooks</div>
+    </div>
+    <div class="row g-3">
+      {% for row in stop_policy_exception_trends.playbook_rows %}
+      <div class="col-lg-6">
+        <div class="border rounded p-3 h-100">
+          <div class="d-flex align-items-start justify-content-between gap-3 mb-2">
+            <div>
+              <div class="fw-semibold">{{ row.label }}</div>
+              <div class="small text-muted">{{ row.workflow }}</div>
+            </div>
+            <div class="text-end small">
+              <div class="{% if row.overdue %}text-danger{% elif row.pending %}text-warning-emphasis{% else %}text-muted{% endif %}">Priority {{ row.priority_score }}</div>
+            </div>
+          </div>
+          <div class="small mb-2">
+            <span class="{% if row.overdue %}text-danger{% else %}text-muted{% endif %}">{{ row.overdue }} overdue</span> ·
+            <span class="{% if row.pending %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.pending }} pending</span> ·
+            <span class="{% if row.late %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.late }} late</span> ·
+            <span class="text-muted">{{ row.symbol_count }} symbols</span> ·
+            <span class="text-muted">{{ row.account_count }} accounts</span>
+          </div>
+          <div class="small text-muted mb-3">{{ row.focus }}{% if row.recurring_symbol_count %} {{ row.recurring_symbol_count }} recurring symbol{{ row.recurring_symbol_count|pluralize }} tied to this reason, {{ row.recurring_ready_count }} cleanup-ready now.{% endif %}</div>
+          <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:stop_policy_followup' %}?reason={{ row.code|urlencode }}&policy_status={{ row.status_filter }}{% if account_filter %}&account={{ account_filter }}{% endif %}{% if event_filter %}&event_type={{ event_filter }}{% endif %}">{{ row.action_label }}</a>
+            <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:stop_policy_followup' %}?reason={{ row.code|urlencode }}&policy_status=ALL{% if account_filter %}&account={{ account_filter }}{% endif %}{% if event_filter %}&event_type={{ event_filter }}{% endif %}">Review full history</a>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if stop_policy_exception_trends.reason_sla_rows %}
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <h2 class="h5 mb-1">Reason-code SLA / operations reporting</h2>
+        <div class="small text-muted">See which exception reasons are staying open too long so Mike can work the oldest debt first instead of only following playbook volume.</div>
+      </div>
+      {% if stop_policy_exception_trends.operations_summary.top_sla_reason_label %}
+      <div class="small text-muted">Top stale reason: {{ stop_policy_exception_trends.operations_summary.top_sla_reason_label }}</div>
+      {% endif %}
+    </div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Actionable exceptions</div><div class="fw-semibold {% if stop_policy_exception_trends.operations_summary.actionable_recent_count %}text-warning-emphasis{% endif %}">{{ stop_policy_exception_trends.operations_summary.actionable_recent_count }}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Overdue exceptions</div><div class="fw-semibold {% if stop_policy_exception_trends.operations_summary.overdue_recent_count %}text-danger{% endif %}">{{ stop_policy_exception_trends.operations_summary.overdue_recent_count }}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Late resolved</div><div class="fw-semibold {% if stop_policy_exception_trends.operations_summary.late_recent_count %}text-warning-emphasis{% endif %}">{{ stop_policy_exception_trends.operations_summary.late_recent_count }}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Stale reasons</div><div class="fw-semibold {% if stop_policy_exception_trends.operations_summary.stale_reason_count %}text-danger{% endif %}">{{ stop_policy_exception_trends.operations_summary.stale_reason_count }}</div><div class="small text-muted">Reasons with 24h+ open debt</div></div></div>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>Reason</th><th>Actionable</th><th>Overdue rate</th><th>Open age</th><th>Evidence-backed</th><th>Route</th></tr></thead>
+        <tbody>
+          {% for row in stop_policy_exception_trends.reason_sla_rows %}
+          <tr>
+            <td>{{ row.label }}<div class="small text-muted">{{ row.symbol_count }} symbols · {{ row.account_count }} accounts</div></td>
+            <td><span class="small {% if row.overdue %}text-danger{% elif row.actionable_count %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.actionable_count }}</span><div class="small text-muted">{{ row.overdue }} overdue · {{ row.pending_active }} pending · {{ row.late }} late</div></td>
+            <td>{% if row.overdue_rate is not None %}<span class="{% if row.overdue_rate >= 50 %}text-danger{% elif row.overdue_rate > 0 %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.overdue_rate }}%</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            <td>{% if row.avg_pending_hours is not None %}{{ row.avg_pending_hours }}h avg{% else %}<span class="text-muted">—</span>{% endif %}<div class="small text-muted">{% if row.oldest_pending_hours is not None %}{{ row.oldest_pending_hours }}h oldest{% else %}No open backlog{% endif %}</div></td>
+            <td><span class="small {% if row.evidence_actionable_count %}text-info{% else %}text-muted{% endif %}">{{ row.evidence_actionable_count }}</span><div class="small text-muted">actionable rows with evidence</div></td>
+            <td class="text-nowrap"><a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:stop_policy_followup' %}?reason={{ row.code|urlencode }}&policy_status=PENDING{% if account_filter %}&account={{ account_filter }}{% endif %}{% if event_filter %}&event_type={{ event_filter }}{% endif %}{% if symbol_filter %}&symbol={{ symbol_filter|urlencode }}{% endif %}{% if evidence_filter %}&evidence_status={{ evidence_filter|urlencode }}{% endif %}{% if evidence_type_filter %}&evidence_type={{ evidence_type_filter|urlencode }}{% endif %}">Open SLA queue</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if stop_policy_exception_trends.evidence_trend_rows %}
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <h2 class="h5 mb-1">Execution-evidence trends</h2>
+        <div class="small text-muted">Measure whether confirmation-backed exceptions are getting cleaner or whether unsupported evidence states are still piling up.</div>
+      </div>
+      {% if stop_policy_exception_trends.operations_summary.top_evidence_label %}
+      <div class="small text-muted">Top evidence bucket: {{ stop_policy_exception_trends.operations_summary.top_evidence_label }}</div>
+      {% endif %}
+    </div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">30d evidence-backed rows</div><div class="fw-semibold {% if stop_policy_exception_trends.operations_summary.evidence_recent_count %}text-info{% endif %}">{{ stop_policy_exception_trends.operations_summary.evidence_recent_count }}</div><div class="small text-muted">{% if stop_policy_exception_trends.operations_summary.evidence_coverage_rate is not None %}{{ stop_policy_exception_trends.operations_summary.evidence_coverage_rate }}% coverage{% else %}—{% endif %}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Delta vs prior 30d</div><div class="fw-semibold {% if stop_policy_exception_trends.operations_summary.evidence_count_delta and stop_policy_exception_trends.operations_summary.evidence_count_delta > 0 %}text-info{% elif stop_policy_exception_trends.operations_summary.evidence_count_delta and stop_policy_exception_trends.operations_summary.evidence_count_delta < 0 %}text-warning-emphasis{% endif %}">{% if stop_policy_exception_trends.operations_summary.evidence_count_delta is not None %}{{ stop_policy_exception_trends.operations_summary.evidence_count_delta }}{% else %}<span class="text-muted">—</span>{% endif %}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Unsupported waiting-confirmation</div><div class="fw-semibold {% if stop_policy_exception_trends.operations_summary.unsupported_waiting_confirmation_count %}text-danger{% endif %}">{{ stop_policy_exception_trends.operations_summary.unsupported_waiting_confirmation_count }}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Top evidence backlog</div><div class="fw-semibold">{{ stop_policy_exception_trends.operations_summary.top_evidence_label|default:"—" }}</div><div class="small text-muted">{{ stop_policy_exception_trends.operations_summary.top_evidence_actionable|default:0 }} actionable · {{ stop_policy_exception_trends.operations_summary.top_evidence_unsupported|default:0 }} unsupported</div></div></div>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>Evidence type</th><th>30d volume</th><th>Support mix</th><th>Actionable pressure</th><th>Route</th></tr></thead>
+        <tbody>
+          {% for row in stop_policy_exception_trends.evidence_trend_rows %}
+          <tr>
+            <td>{{ row.label }}<div class="small text-muted">{{ row.symbol_count }} symbols · {{ row.account_count }} accounts</div></td>
+            <td>{{ row.count }}<div class="small {% if row.delta > 0 %}text-danger{% elif row.delta < 0 %}text-success{% else %}text-muted{% endif %}">Delta {{ row.delta }}</div></td>
+            <td><span class="small {% if row.unsupported %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.supported }} supported · {{ row.unsupported }} unsupported</span><div class="small text-muted">{% if row.support_rate is not None %}{{ row.support_rate }}% with evidence{% else %}—{% endif %}</div></td>
+            <td><span class="small {% if row.overdue %}text-danger{% elif row.actionable %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.actionable }}</span><div class="small text-muted">{{ row.overdue }} overdue · {{ row.pending }} pending · {{ row.late }} late</div></td>
+            <td class="text-nowrap"><a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:stop_policy_followup' %}?evidence_type={{ row.code|urlencode }}&policy_status=PENDING{% if account_filter %}&account={{ account_filter }}{% endif %}{% if event_filter %}&event_type={{ event_filter }}{% endif %}{% if symbol_filter %}&symbol={{ symbol_filter|urlencode }}{% endif %}{% if reason_filter %}&reason={{ reason_filter|urlencode }}{% endif %}{% if evidence_filter %}&evidence_status={{ evidence_filter|urlencode }}{% endif %}">Open evidence queue</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if retention_presets %}
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <h2 class="h5 mb-1">Retention-policy presets</h2>
+        <div class="small text-muted">Attachment-backed execution evidence now inherits retention windows from Allocation Controls instead of always defaulting to one fixed 365-day window. The app uses the strongest applicable preset across quality and evidence type.</div>
+      </div>
+      <a class="small" href="{% url 'portfolios:risk_settings' %}">Edit presets</a>
+    </div>
+    <div class="row g-2">
+      {% for item in retention_presets %}
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">{{ item.label }}</div><div class="fw-semibold">{{ item.days }} days</div></div></div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if stop_policy_exception_trends.evidence_quality_rows %}
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <h2 class="h5 mb-1">Evidence-quality controls</h2>
+        <div class="small text-muted">Distinguish strong confirmation evidence from weak or placeholder support so the queue does not treat every note as equally trustworthy. Attachments accept PDF, PNG, JPG, WEBP, CSV, or TXT up to 5 MB and default to a 365-day retention window.</div>
+      </div>
+      {% if stop_policy_exception_trends.operations_summary.top_quality_label %}
+      <div class="small text-muted">Top quality bucket: {{ stop_policy_exception_trends.operations_summary.top_quality_label }}</div>
+      {% endif %}
+    </div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Strong / verified</div><div class="fw-semibold {% if stop_policy_exception_trends.operations_summary.strong_or_verified_count %}text-success{% endif %}">{{ stop_policy_exception_trends.operations_summary.strong_or_verified_count }}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Weak quality</div><div class="fw-semibold {% if stop_policy_exception_trends.operations_summary.weak_quality_count %}text-warning-emphasis{% endif %}">{{ stop_policy_exception_trends.operations_summary.weak_quality_count }}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Placeholder</div><div class="fw-semibold {% if stop_policy_exception_trends.operations_summary.placeholder_quality_count %}text-danger{% endif %}">{{ stop_policy_exception_trends.operations_summary.placeholder_quality_count }}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Unrated evidence</div><div class="fw-semibold {% if stop_policy_exception_trends.operations_summary.unrated_evidence_count %}text-warning-emphasis{% endif %}">{{ stop_policy_exception_trends.operations_summary.unrated_evidence_count }}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Evidence attachments</div><div class="fw-semibold {% if stop_policy_exception_trends.operations_summary.attachment_recent_count %}text-info{% endif %}">{{ stop_policy_exception_trends.operations_summary.attachment_recent_count }}</div><div class="small text-muted">{{ stop_policy_exception_trends.operations_summary.attachment_missing_count }} rows still text-only · {{ stop_policy_exception_trends.operations_summary.attachment_expiring_soon_count }} expiring soon · {{ stop_policy_exception_trends.operations_summary.attachment_expired_count }} expired</div></div></div>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>Quality</th><th>30d volume</th><th>Support mix</th><th>Actionable pressure</th><th>Route</th></tr></thead>
+        <tbody>
+          {% for row in stop_policy_exception_trends.evidence_quality_rows %}
+          <tr>
+            <td>{{ row.label }}<div class="small text-muted">{{ row.symbol_count }} symbols · {{ row.account_count }} accounts</div></td>
+            <td>{{ row.count }}<div class="small {% if row.delta > 0 %}text-danger{% elif row.delta < 0 %}text-success{% else %}text-muted{% endif %}">Delta {{ row.delta }}</div></td>
+            <td><span class="small {% if row.unsupported %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.supported }} supported · {{ row.unsupported }} unsupported</span><div class="small text-muted">{% if row.support_rate is not None %}{{ row.support_rate }}% with evidence{% else %}—{% endif %}</div></td>
+            <td><span class="small {% if row.overdue %}text-danger{% elif row.actionable %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.actionable }}</span><div class="small text-muted">{{ row.overdue }} overdue · {{ row.pending }} pending · {{ row.late }} late</div></td>
+            <td class="text-nowrap"><a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:stop_policy_followup' %}?evidence_quality={{ row.code|urlencode }}&policy_status=PENDING{% if account_filter %}&account={{ account_filter }}{% endif %}{% if event_filter %}&event_type={{ event_filter }}{% endif %}{% if symbol_filter %}&symbol={{ symbol_filter|urlencode }}{% endif %}{% if reason_filter %}&reason={{ reason_filter|urlencode }}{% endif %}{% if evidence_filter %}&evidence_status={{ evidence_filter|urlencode }}{% endif %}{% if evidence_type_filter %}&evidence_type={{ evidence_type_filter|urlencode }}{% endif %}">Open quality queue</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if stop_policy_exception_trends.recurring_symbol_rows %}
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <h2 class="h5 mb-1">Recurring-symbol remediation</h2>
+        <div class="small text-muted">Push repeated exception names straight into the right cleanup action instead of only reviewing them as trend rows.</div>
+      </div>
+      <div class="small text-muted">{{ stop_policy_exception_trends.remediation_ready_count }} ready for direct stop cleanup</div>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>Symbol</th><th>90d exceptions</th><th>Current posture</th><th>Top reason</th><th>Cleanup</th></tr></thead>
+        <tbody>
+          {% for row in stop_policy_exception_trends.recurring_symbol_rows %}
+          <tr>
+            <td>{{ row.symbol }}<div class="small text-muted">{{ row.account_label }}</div></td>
+            <td><span class="small {% if row.actionable_count %}text-danger{% else %}text-warning-emphasis{% endif %}">{{ row.count }}</span><div class="small text-muted">{{ row.actionable_count }} still actionable</div></td>
+            <td>
+              {% if row.latest_bucket == "PENDING_OVERDUE" %}<span class="badge text-bg-danger">Overdue</span>
+              {% elif row.latest_bucket == "PENDING_ACTIVE" %}<span class="badge text-bg-warning">Pending</span>
+              {% elif row.latest_bucket == "LATE_RESOLVED" %}<span class="badge text-bg-secondary">Late resolved</span>
+              {% elif row.latest_bucket == "ON_TIME" %}<span class="badge text-bg-success">On time</span>
+              {% else %}<span class="badge text-bg-light">{{ row.latest_bucket_label }}</span>{% endif %}
+              <div class="small text-muted mt-1">Latest {{ row.latest_tx.get_event_type_display }} · {{ row.latest_tx.created_at }}</div>
+              {% if row.current_stop_price %}<div class="small text-muted">Current stop {{ row.current_stop_price }}</div>{% endif %}
+            </td>
+            <td>{{ row.top_reason }}</td>
+            <td class="text-nowrap">
+              <a class="btn btn-sm btn-outline-secondary mb-1" href="{% url 'portfolios:stop_policy_followup' %}?symbol={{ row.symbol|urlencode }}{% if account_filter %}&account={{ account_filter }}{% endif %}&policy_status=PENDING{% if row.top_reason_code %}&reason={{ row.top_reason_code|urlencode }}{% endif %}">Open queue</a>
+              {% if row.needs_action %}
+                <a class="btn btn-sm btn-outline-primary mb-1" href="{% url 'portfolios:holding_edit' row.position_id %}">{{ row.remediation_label }}</a>
+              {% else %}
+                <a class="btn btn-sm btn-outline-secondary mb-1" href="{% url 'portfolios:holding_detail' row.position_id %}">{{ row.remediation_label }}</a>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if followup.reason_rows %}
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h2 class="h5 mb-3">Recorded defer / resolution reasons</h2>
+    <div class="row g-2">
+      {% for row in followup.reason_rows %}
+      <div class="col-md-4">
+        <div class="border rounded p-2 h-100">
+          <div class="small text-muted">Reason</div>
+          <div class="fw-semibold">{{ row.label }}</div>
+          <div class="small text-muted">{{ row.count }} row{{ row.count|pluralize }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if stop_policy_exception_trends.recent_30_count %}
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <h2 class="h5 mb-1">Exception trend reporting</h2>
+        <div class="small text-muted">Reason-code usage and repeat defer patterns help separate one-off misses from recurring workflow debt.</div>
+      </div>
+      <div class="small {% if stop_policy_exception_trends.trend_direction == "DEGRADING" %}text-danger{% elif stop_policy_exception_trends.trend_direction == "IMPROVING" %}text-success{% elif stop_policy_exception_trends.trend_direction == "WATCH" %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ stop_policy_exception_trends.trend_label }}</div>
+    </div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">30d exceptions</div><div class="fw-semibold">{{ stop_policy_exception_trends.recent_30_count }}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Delta vs prior 30d</div><div class="fw-semibold {% if stop_policy_exception_trends.exception_delta is not None and stop_policy_exception_trends.exception_delta > 0 %}text-danger{% elif stop_policy_exception_trends.exception_delta is not None and stop_policy_exception_trends.exception_delta < 0 %}text-success{% endif %}">{% if stop_policy_exception_trends.exception_delta is not None %}{{ stop_policy_exception_trends.exception_delta }}{% else %}<span class="text-muted">—</span>{% endif %}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Audit coverage</div><div class="fw-semibold">{% if stop_policy_exception_trends.audit_coverage_rate is not None %}{{ stop_policy_exception_trends.audit_coverage_rate }}%{% else %}<span class="text-muted">—</span>{% endif %}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Recurring symbols (90d)</div><div class="fw-semibold {% if stop_policy_exception_trends.recurring_symbol_count %}text-warning-emphasis{% endif %}">{{ stop_policy_exception_trends.recurring_symbol_count }}</div></div></div>
+    </div>
+    <div class="small text-muted mb-3">{{ stop_policy_exception_trends.trend_reason }}</div>
+    {% if stop_policy_exception_trends.reason_rows %}
+    <div class="table-responsive mb-3">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>Reason</th><th>30d count</th><th>Delta</th><th>Overdue / pending / late</th><th>Symbols</th></tr></thead>
+        <tbody>
+          {% for row in stop_policy_exception_trends.reason_rows %}
+          <tr>
+            <td>{{ row.label }}</td>
+            <td>{{ row.count }}</td>
+            <td><span class="{% if row.delta > 0 %}text-danger{% elif row.delta < 0 %}text-success{% else %}text-muted{% endif %}">{{ row.delta }}</span></td>
+            <td><span class="small {% if row.overdue %}text-danger{% else %}text-muted{% endif %}">{{ row.overdue }} overdue</span> · <span class="small {% if row.pending %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.pending }} pending</span> · <span class="small {% if row.late %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.late }} late</span></td>
+            <td>{{ row.symbol_count }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+    {% if stop_policy_exception_trends.recurring_symbol_rows %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>Recurring symbol</th><th>90d exceptions</th><th>Top reason</th><th>Latest event</th></tr></thead>
+        <tbody>
+          {% for row in stop_policy_exception_trends.recurring_symbol_rows %}
+          <tr>
+            <td>{{ row.symbol }}<div class="small text-muted">{{ row.account_label }}</div></td>
+            <td>{{ row.count }}</td>
+            <td>{{ row.top_reason }}</td>
+            <td>{{ row.latest_tx.get_event_type_display }} · {{ row.latest_tx.created_at }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if followup.account_rows %}
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h2 class="h5 mb-3">Account follow-up pressure</h2>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>Account</th><th>Overdue</th><th>Pending</th><th>Late</th><th>Total in current view</th><th></th></tr></thead>
+        <tbody>
+          {% for row in followup.account_rows %}
+          <tr>
+            <td>{{ row.account_label }}</td>
+            <td><span class="{% if row.overdue %}text-danger{% else %}text-muted{% endif %}">{{ row.overdue }}</span></td>
+            <td><span class="{% if row.pending %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.pending }}</span></td>
+            <td><span class="{% if row.late %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.late }}</span></td>
+            <td>{{ row.count }}</td>
+            <td><a href="{% url 'portfolios:stop_policy_followup' %}?account={% if row.account_label == 'Unlabeled / blended' %}__UNLABELED__{% else %}{{ row.account_label|urlencode }}{% endif %}&policy_status={{ status_filter }}{% if event_filter %}&event_type={{ event_filter }}{% endif %}{% if symbol_filter %}&symbol={{ symbol_filter|urlencode }}{% endif %}{% if reason_filter %}&reason={{ reason_filter|urlencode }}{% endif %}{% if evidence_filter %}&evidence_status={{ evidence_filter|urlencode }}{% endif %}{% if evidence_type_filter %}&evidence_type={{ evidence_type_filter|urlencode }}{% endif %}">Open</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <h2 class="h5 mb-1">Evidence retention work queue</h2>
+        <div class="small text-muted">Turn attachment retention into an explicit work queue. Extend the retention window while the evidence still matters, or archive / clear the file after the note and reference fields preserve the essential audit trail.</div>
+      </div>
+      <div class="small text-muted">{{ followup.retention_summary.attachment_count }} attachment-backed rows</div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-3"><div class="border rounded p-3 h-100"><div class="small text-muted">Active retention</div><div class="h4 mb-0 text-success">{{ followup.retention_summary.active_count }}</div><div class="small mt-1"><a href="{% url 'portfolios:stop_policy_followup' %}?retention=ATTACHMENT{% if account_filter %}&account={{ account_filter }}{% endif %}">Review attachment rows</a></div></div></div>
+      <div class="col-md-3"><div class="border rounded p-3 h-100"><div class="small text-muted">Expiring soon</div><div class="h4 mb-0 {% if followup.retention_summary.expiring_soon_count %}text-warning-emphasis{% endif %}">{{ followup.retention_summary.expiring_soon_count }}</div><div class="small mt-1"><a href="{% url 'portfolios:stop_policy_followup' %}?retention=EXPIRING_SOON{% if account_filter %}&account={{ account_filter }}{% endif %}">Open expiring queue</a></div></div></div>
+      <div class="col-md-3"><div class="border rounded p-3 h-100"><div class="small text-muted">Expired</div><div class="h4 mb-0 {% if followup.retention_summary.expired_count %}text-danger{% else %}text-success{% endif %}">{{ followup.retention_summary.expired_count }}</div><div class="small mt-1"><a href="{% url 'portfolios:stop_policy_followup' %}?retention=EXPIRED{% if account_filter %}&account={{ account_filter }}{% endif %}">Open expired queue</a></div></div></div>
+      <div class="col-md-3"><div class="border rounded p-3 h-100"><div class="small text-muted">Text-only / missing retention</div><div class="h4 mb-0">{{ followup.retention_summary.text_only_count }}</div><div class="small mt-1">{{ followup.retention_summary.missing_retention_count }} attachment rows missing retention.</div></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <h2 class="h5 mb-1">Bulk retention actions</h2>
+        <div class="small text-muted">Batch the current attachment queue when you already know the right action. This uses the current stop-policy filters, then narrows the bulk scope to the attachment subset you pick.</div>
+      </div>
+      <div class="small text-muted">{{ followup.retention_summary.attachment_count }} attachment-backed rows in the current queue</div>
+    </div>
+    <form method="post" class="row g-2 align-items-end">
+      {% csrf_token %}
+      <input type="hidden" name="save_bulk_retention_action" value="1">
+      <input type="hidden" name="account" value="{{ account_filter }}">
+      <input type="hidden" name="policy_status" value="{{ status_filter }}">
+      <input type="hidden" name="event_type" value="{{ event_filter }}">
+      <input type="hidden" name="symbol" value="{{ symbol_filter }}">
+      <input type="hidden" name="reason" value="{{ reason_filter }}">
+      <input type="hidden" name="evidence_status" value="{{ evidence_filter }}">
+      <input type="hidden" name="evidence_type" value="{{ evidence_type_filter }}">
+      <input type="hidden" name="evidence_quality" value="{{ evidence_quality_filter }}">
+      <input type="hidden" name="retention" value="{{ retention_filter }}">
+      <div class="col-lg-5">
+        <label class="form-label form-label-sm">Bulk scope</label>
+        <select name="bulk_scope" class="form-select form-select-sm">
+          <option value="CURRENT_RESULTS">Current filtered attachment rows ({{ followup.retention_summary.attachment_count }})</option>
+          <option value="ATTACHMENT">All attachment-backed rows for these filters</option>
+          <option value="EXPIRING_SOON">Expiring soon rows ({{ followup.retention_summary.expiring_soon_count }})</option>
+          <option value="EXPIRED">Expired rows ({{ followup.retention_summary.expired_count }})</option>
+          <option value="MISSING_RETENTION">Missing-retention rows ({{ followup.retention_summary.missing_retention_count }})</option>
+        </select>
+      </div>
+      <div class="col-lg-7">
+        <div class="d-flex flex-wrap gap-2">
+          <button class="btn btn-sm btn-outline-secondary" name="retention_action" value="extend_90">Bulk extend +90d</button>
+          <button class="btn btn-sm btn-outline-secondary" name="retention_action" value="extend_365">Bulk extend +365d</button>
+          <button class="btn btn-sm btn-outline-danger" name="retention_action" value="archive_clear">Bulk archive / clear files</button>
+        </div>
+        <div class="small text-muted mt-2">Archive batching is still audit-safe: the file is removed, but the stop-policy row and note/reference trail remain.</div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <h2 class="h5 mb-1">Follow-up queue</h2>
+        <div class="small text-muted">Open holdings can jump directly into the holding edit screen so the stop can be recorded or tightened without leaving the queue.</div>
+      </div>
+      <div class="small text-muted">{{ followup.count }} rows</div>
+    </div>
+    {% if followup.rows %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>When</th><th>Symbol</th><th>Account</th><th>Event</th><th>Bucket</th><th>Age</th><th>Due / resolved</th><th>Execution evidence</th><th>Audit note</th><th>Action</th></tr></thead>
+        <tbody>
+          {% for row in followup.rows %}
+          <tr>
+            <td>{{ row.tx.created_at }}</td>
+            <td><a href="{% url 'portfolios:holding_detail' row.position.pk %}">{{ row.symbol }}</a></td>
+            <td>{{ row.account_label }}</td>
+            <td>{{ row.tx.get_event_type_display }}</td>
+            <td>
+              {% if row.bucket == "PENDING_OVERDUE" %}<span class="badge text-bg-danger">Overdue</span>
+              {% elif row.bucket == "PENDING_ACTIVE" %}<span class="badge text-bg-warning">Pending</span>
+              {% elif row.bucket == "LATE_RESOLVED" %}<span class="badge text-bg-secondary">Late resolved</span>
+              {% elif row.bucket == "ON_TIME" %}<span class="badge text-bg-success">On time</span>
+              {% else %}<span class="badge text-bg-light">{{ row.bucket_label }}</span>{% endif %}
+            </td>
+            <td>{{ row.age_label }}</td>
+            <td>
+              {% if row.due_at and row.bucket == "PENDING_ACTIVE" %}Due {{ row.due_at }}
+              {% elif row.due_at and row.bucket == "PENDING_OVERDUE" %}<span class="text-danger">Was due {{ row.due_at }}</span>
+              {% elif row.resolved_at %}Resolved {{ row.resolved_at }}
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td style="min-width: 250px;">
+              {% if row.has_execution_evidence %}
+                <div class="small fw-semibold text-info">{{ row.execution_evidence_label }}</div>
+                {% if row.execution_evidence_quality_label %}<div class="small text-muted">Quality {{ row.execution_evidence_quality_label }}</div>{% endif %}
+                {% if row.execution_evidence_reference %}<div class="small text-muted">Ref {{ row.execution_evidence_reference }}</div>{% endif %}
+                {% if row.execution_evidence_recorded_at %}<div class="small text-muted">Saved {{ row.execution_evidence_recorded_at }}</div>{% endif %}
+                {% if row.execution_evidence_attachment_url %}<div class="small text-muted"><a href="{{ row.execution_evidence_attachment_url }}" target="_blank" rel="noopener">Attachment: {{ row.execution_evidence_attachment_name|default:"Open file" }}</a></div>{% if row.execution_evidence_retention_until %}<div class="small {% if row.attachment_retention_expired %}text-danger{% elif row.attachment_retention_expiring_soon %}text-warning-emphasis{% else %}text-muted{% endif %}">Retention {% if row.attachment_retention_expired %}expired{% elif row.attachment_retention_expiring_soon %}expires soon{% else %}through{% endif %} {{ row.execution_evidence_retention_until }}</div>{% endif %}{% endif %}
+                {% if row.execution_evidence_note %}<div class="small text-muted mt-1">{{ row.execution_evidence_note }}</div>{% endif %}
+                {% if row.broker_confirmation_linked %}<div class="small text-muted mt-1">Broker link{% if row.broker_confirmation_snapshot_label %}: snapshot {{ row.broker_confirmation_snapshot_label }}{% endif %}{% if row.broker_confirmation_run_label %}<br>run {{ row.broker_confirmation_run_label }}{% endif %}{% if row.broker_confirmation_resolution_label %}<br>resolution {{ row.broker_confirmation_resolution_label }}{% endif %}{% if row.broker_confirmation_linked_at %}<br>linked {{ row.broker_confirmation_linked_at }}{% endif %}</div>{% endif %}
+              {% else %}
+                <span class="text-muted small">No execution evidence saved.</span>
+              {% endif %}
+            </td>
+            <td style="min-width: 320px;">
+              <form method="post" enctype="multipart/form-data" class="d-grid gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="save_stop_policy_note" value="1">
+                <input type="hidden" name="tx_id" value="{{ row.tx.pk }}">
+                <input type="hidden" name="account" value="{{ account_filter }}">
+                <input type="hidden" name="policy_status" value="{{ status_filter }}">
+                <input type="hidden" name="event_type" value="{{ event_filter }}">
+                <input type="hidden" name="symbol" value="{{ symbol_filter }}">
+                <input type="hidden" name="reason" value="{{ reason_filter }}">
+                <input type="hidden" name="evidence_status" value="{{ evidence_filter }}">
+                <input type="hidden" name="evidence_type" value="{{ evidence_type_filter }}">
+                <input type="hidden" name="evidence_quality" value="{{ evidence_quality_filter }}">
+                <input type="hidden" name="retention" value="{{ retention_filter }}">
+                <select name="reason_code" class="form-select form-select-sm">
+                  <option value="">No reason selected</option>
+                  {% for code, label in stop_policy_note_form.fields.reason_code.choices %}
+                    {% if code %}<option value="{{ code }}" {% if row.reason_code == code %}selected{% endif %}>{{ label }}</option>{% endif %}
+                  {% endfor %}
+                </select>
+                <textarea name="note" rows="2" class="form-control form-control-sm" placeholder="Why this stop was deferred or handled differently.">{{ row.reason_note }}</textarea>
+                <select name="evidence_type" class="form-select form-select-sm">
+                  <option value="">No execution evidence saved</option>
+                  {% for code, label in stop_policy_note_form.fields.evidence_type.choices %}
+                    {% if code %}<option value="{{ code }}" {% if row.execution_evidence_type == code %}selected{% endif %}>{{ label }}</option>{% endif %}
+                  {% endfor %}
+                </select>
+                <select name="evidence_quality" class="form-select form-select-sm">
+                  <option value="">No evidence quality selected</option>
+                  {% for code, label in stop_policy_note_form.fields.evidence_quality.choices %}
+                    {% if code %}<option value="{{ code }}" {% if row.execution_evidence_quality == code %}selected{% endif %}>{{ label }}</option>{% endif %}
+                  {% endfor %}
+                </select>
+                <input type="text" name="evidence_reference" value="{{ row.execution_evidence_reference }}" class="form-control form-control-sm" placeholder="Order ID, confirmation number, or import reference">
+                <textarea name="evidence_note" rows="2" class="form-control form-control-sm" placeholder="What evidence supports this exception?">{{ row.execution_evidence_note }}</textarea>
+                <input type="file" name="evidence_attachment" class="form-control form-control-sm" accept=".pdf,.png,.jpg,.jpeg,.webp,.csv,.txt">
+                <select name="broker_confirmation_snapshot_id" class="form-select form-select-sm">
+                  <option value="">No broker snapshot link</option>
+                  {% for option in row.broker_confirmation_snapshot_options %}<option value="{{ option.id }}" {% if row.broker_confirmation_snapshot_id == option.id %}selected{% endif %}>{{ option.label }}</option>{% endfor %}
+                </select>
+                <select name="broker_confirmation_run_id" class="form-select form-select-sm">
+                  <option value="">No broker reconciliation run link</option>
+                  {% for option in row.broker_confirmation_run_options %}<option value="{{ option.id }}" {% if row.broker_confirmation_run_id == option.id %}selected{% endif %}>{{ option.label }}</option>{% endfor %}
+                </select>
+                <select name="broker_confirmation_resolution_id" class="form-select form-select-sm">
+                  <option value="">No broker resolution link</option>
+                  {% for option in row.broker_confirmation_resolution_options %}<option value="{{ option.id }}" {% if row.broker_confirmation_resolution_id == option.id %}selected{% endif %}>{{ option.label }}</option>{% endfor %}
+                </select>
+                {% if row.execution_evidence_attachment_url %}<div class="small text-muted">Current file: <a href="{{ row.execution_evidence_attachment_url }}" target="_blank" rel="noopener">{{ row.execution_evidence_attachment_name }}</a></div>{% if row.execution_evidence_retention_until %}<div class="small {% if row.attachment_retention_expired %}text-danger{% elif row.attachment_retention_expiring_soon %}text-warning-emphasis{% else %}text-muted{% endif %}">Retention {% if row.attachment_retention_expired %}expired{% elif row.attachment_retention_expiring_soon %}expires soon{% else %}through{% endif %} {{ row.execution_evidence_retention_until }}</div>{% else %}<div class="small text-warning-emphasis">Retention missing</div>{% endif %}{% endif %}
+                <div class="small text-muted">Allowed: PDF, PNG, JPG, WEBP, CSV, TXT · max 5 MB · new uploads keep the active retention preset. Broker snapshot/run/resolution links do not rewrite historical broker data.</div>
+                <button class="btn btn-sm btn-outline-secondary">Save note / evidence / quality</button>
+              </form>
+              {% if row.reason_label %}<div class="small text-muted mt-2">{{ row.reason_label }}</div>{% endif %}
+            </td>
+            <td>
+              <div class="d-grid gap-2">
+                {% if row.needs_action %}
+                  <a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:holding_edit' row.position.pk %}">Record / tighten stop</a>
+                {% else %}
+                  <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holding_detail' row.position.pk %}">Review history</a>
+                {% endif %}
+                {% if row.has_execution_evidence_attachment %}
+                  <form method="post" class="d-grid gap-1">
+                    {% csrf_token %}
+                    <input type="hidden" name="save_retention_action" value="1">
+                    <input type="hidden" name="tx_id" value="{{ row.tx.pk }}">
+                    <input type="hidden" name="account" value="{{ account_filter }}">
+                    <input type="hidden" name="policy_status" value="{{ status_filter }}">
+                    <input type="hidden" name="event_type" value="{{ event_filter }}">
+                    <input type="hidden" name="symbol" value="{{ symbol_filter }}">
+                    <input type="hidden" name="reason" value="{{ reason_filter }}">
+                    <input type="hidden" name="evidence_status" value="{{ evidence_filter }}">
+                    <input type="hidden" name="evidence_type" value="{{ evidence_type_filter }}">
+                    <input type="hidden" name="evidence_quality" value="{{ evidence_quality_filter }}">
+                    <input type="hidden" name="retention" value="{{ retention_filter }}">
+                    <button class="btn btn-sm btn-outline-secondary" name="retention_action" value="extend_90">Extend +90d</button>
+                    <button class="btn btn-sm btn-outline-secondary" name="retention_action" value="extend_365">Extend +365d</button>
+                    <button class="btn btn-sm btn-outline-danger" name="retention_action" value="archive_clear">Archive / clear file</button>
+                  </form>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <div class="text-muted">No stop-policy rows matched the current filters.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

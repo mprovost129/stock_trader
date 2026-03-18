@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Rename {{ watchlist.name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h1 class="h3 mb-1">Rename watchlist</h1>
+    <div class="text-muted small">Keep your watchlists organized as your trading themes change.</div>
+  </div>
+  <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:watchlist' %}">Back to watchlists</a>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="small text-muted mb-3">Current name: {{ watchlist.name }}</div>
+        <form method="post" class="row g-3">
+          {% csrf_token %}
+          <div class="col-12">
+            <label class="form-label small text-muted">New name</label>
+            {{ form.name }}
+          </div>
+          <div class="col-12 d-flex gap-2">
+            <button class="btn btn-primary">Save name</button>
+            <a class="btn btn-outline-secondary" href="{% url 'portfolios:watchlist' %}">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h5 mb-2">Use cases</h2>
+        <ul class="small text-muted mb-0">
+          <li class="mb-2">Rename a broad list into a more specific workflow like <strong>Earnings week</strong> or <strong>High-conviction swings</strong>.</li>
+          <li class="mb-2">Keep old lists archived instead of cluttering the active operator surface.</li>
+          <li>Delete only archived watchlists after you are sure you no longer need their symbols or notes.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

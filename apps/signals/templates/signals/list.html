@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+{% load dashboard_extras %}
+
+{% block title %}Signals{% endblock %}
+
+{% block content %}
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="h3 mb-0">Signals</h1>
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-primary" href="{% url 'signals:list' %}?review_queue=1">Review queue</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:home' %}">Back to dashboard</a>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+          <h2 class="h5 mb-1">Signal filters</h2>
+          <div class="text-muted small">Narrow candidates by price band, direction, timeframe, and whether you already hold the stock. Price uses trade-plan entry first, then the latest timeframe close. You can also add or remove names from the active watchlist without leaving this page.</div>
+        </div>
+      </div>
+      <form method="get" class="row g-2 align-items-end">
+        {% if active_preset %}<input type="hidden" name="preset" value="{{ active_preset.pk }}">{% endif %}
+        {% if review_queue %}<input type="hidden" name="review_queue" value="1">{% endif %}
+        {% if outcome_status %}<input type="hidden" name="outcome_status" value="{{ outcome_status }}">{% endif %}
+        {% if request.GET.status %}<input type="hidden" name="status" value="{{ request.GET.status }}">{% endif %}
+        {% if request.GET.strategy %}<input type="hidden" name="strategy" value="{{ request.GET.strategy }}">{% endif %}
+        {% if request.GET.instrument %}<input type="hidden" name="instrument" value="{{ request.GET.instrument }}">{% endif %}
+        <div class="col-sm-3 col-lg-2">
+          <label class="form-label small text-muted">Min price</label>
+          <input type="number" step="0.00000001" name="min_price" value="{{ min_price }}" class="form-control form-control-sm" placeholder="5">
+        </div>
+        <div class="col-sm-3 col-lg-2">
+          <label class="form-label small text-muted">Max price</label>
+          <input type="number" step="0.00000001" name="max_price" value="{{ max_price }}" class="form-control form-control-sm" placeholder="50">
+        </div>
+        <div class="col-sm-3 col-lg-2">
+          <label class="form-label small text-muted">Direction</label>
+          <select name="direction" class="form-select form-select-sm">
+            <option value="">Any</option>
+            {% for value, label in direction_choices %}
+              <option value="{{ value }}" {% if direction == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-sm-3 col-lg-2">
+          <label class="form-label small text-muted">Timeframe</label>
+          <select name="timeframe" class="form-select form-select-sm">
+            <option value="">Any</option>
+            {% for item in timeframe_choices %}
+              <option value="{{ item }}" {% if timeframe == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-sm-4 col-lg-2">
+          <label class="form-label small text-muted">Ownership</label>
+          <select name="ownership_state" class="form-select form-select-sm">
+            <option value="">Any</option>
+            <option value="NOT_HELD" {% if ownership_state == 'NOT_HELD' %}selected{% endif %}>Not currently held</option>
+            <option value="HELD_OPEN" {% if ownership_state == 'HELD_OPEN' %}selected{% endif %}>Already held</option>
+          </select>
+        </div>
+        <div class="col-sm-auto">
+          <button class="btn btn-sm btn-primary">Apply filters</button>
+        </div>
+        <div class="col-sm-auto">
+          <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}{% if review_queue %}?review_queue=1{% endif %}">Clear</a>
+        </div>
+      </form>
+      {% if min_price or max_price or min_score or max_score or direction or timeframe or ownership_state %}
+        <div class="small text-muted mt-2">
+          Active filters:
+          price {% if min_price %}${{ min_price }}{% else %}any{% endif %} to {% if max_price %}${{ max_price }}{% else %}any{% endif %};
+          score {% if min_score %}{{ min_score }}{% else %}any{% endif %} to {% if max_score %}{{ max_score }}{% else %}any{% endif %};
+          direction {{ direction|default:'any' }};
+          timeframe {{ timeframe|default:'any' }};
+          ownership {{ ownership_state|default:'any' }}.
+          {% if active_preset %}<span class="ms-2">Preset: <strong>{{ active_preset.name }}</strong></span>{% endif %}
+        </div>
+      {% endif %}
+      {% if filter_error %}
+        <div class="alert alert-warning py-2 mt-3 mb-0">{{ filter_error }}</div>
+      {% endif %}
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}?ownership_state=NOT_HELD&direction=LONG">Longs not held</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}?ownership_state=HELD_OPEN">Signals for held stocks</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}?review_queue=1&direction=LONG">Reviewable longs</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}?direction=LONG&min_score=80">High-conviction longs</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}?min_score=60&max_score=79.99">60–79 review band</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-4"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">New high-conviction signals</div><div class="display-6">{{ score_summary.high_conviction }}</div><div class="small text-muted">Score 80+ and not flat</div></div></div></div>
+    <div class="col-md-4"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Review-zone signals</div><div class="display-6">{{ score_summary.review_zone }}</div><div class="small text-muted">Score 60–79 and not flat</div></div></div></div>
+    <div class="col-md-4"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Below-review / unscored</div><div class="display-6">{{ score_summary.below_review }}</div><div class="small text-muted">Score under 60 or missing</div></div></div></div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Account equity</div><div class="display-6">{% if account_equity is not None %}${{ account_equity }}{% else %}—{% endif %}</div></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Risk / trade</div><div class="display-6">{% if risk_pct is not None %}{{ risk_pct|floatformat:4 }}{% else %}—{% endif %}</div></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Held market value</div><div class="display-6">${{ total_held_market_value }}</div></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Cash headroom</div><div class="display-6">{% if cash_headroom is not None %}${{ cash_headroom|floatformat:2 }}{% else %}—{% endif %}</div></div></div></div>
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+          <h2 class="h5 mb-1">Sizing posture</h2>
+          <div class="text-muted small">Use allocation controls to decide whether a suggested trade size still fits your current cash headroom, concentration caps, and recent-correlation cluster limits.</div>
+        </div>
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:risk_settings' %}">Allocation controls</a>
+      </div>
+      <div class="row g-3 align-items-start">
+        <div class="col-lg-7">
+          <h2 class="h5 mb-1">Saved signal presets</h2>
+          <div class="text-muted small mb-3">Save your common screeners so you can jump back to them without rebuilding filters each time.</div>
+          {% if saved_presets %}
+            <div class="d-flex flex-wrap gap-2">
+              {% for preset in saved_presets %}
+                <div class="border rounded p-2 bg-light">
+                  <div class="fw-semibold small mb-2">{{ preset.name }}</div>
+                  <div class="d-flex gap-2 align-items-center flex-wrap">
+                    <a class="btn btn-sm {% if active_preset and active_preset.pk == preset.pk %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'signals:list' %}?preset={{ preset.pk }}">Open</a>
+                    <form method="post" action="{% url 'signals:toggle_filter_preset_dashboard' preset.pk %}">
+                      {% csrf_token %}
+                      <button class="btn btn-sm {% if preset.is_dashboard_widget %}btn-outline-warning{% else %}btn-outline-secondary{% endif %}">{% if preset.is_dashboard_widget %}Unpin{% else %}Pin{% endif %}</button>
+                    </form>
+                    <form method="post" action="{% url 'signals:delete_filter_preset' preset.pk %}">
+                      {% csrf_token %}
+                      <button class="btn btn-sm btn-outline-danger">Delete</button>
+                    </form>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="text-muted">No saved signal presets yet.</div>
+          {% endif %}
+        </div>
+        <div class="col-lg-5">
+          <h2 class="h5 mb-1">Save current filters</h2>
+          <div class="text-muted small mb-3">This stores the current signal-filter combination for one-click reuse.</div>
+          <form method="post" action="{% url 'signals:save_filter_preset' %}" class="row g-2 align-items-end">
+            {% csrf_token %}
+            {% for key, value in current_filters.items %}
+              <input type="hidden" name="{{ key }}" value="{{ value }}">
+            {% endfor %}
+            <div class="col-sm-8">
+              <label class="form-label small text-muted">Preset name</label>
+              {{ saved_preset_form.name }}
+              <div class="form-check mt-2">
+                {{ saved_preset_form.pin_to_dashboard }}
+                <label class="form-check-label small text-muted" for="{{ saved_preset_form.pin_to_dashboard.id_for_label }}">Pin this preset to the dashboard</label>
+              </div>
+            </div>
+            <div class="col-sm-4">
+              <button class="btn btn-sm btn-primary w-100">Save preset</button>
+            </div>
+          </form>
+          {% if not current_filters %}
+            <div class="small text-muted mt-2">Choose at least one filter above before saving a preset.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Fits all guardrails</div><div class="display-6">{{ guardrail_summary.OK|default:0 }}</div><div class="small text-muted">Cash + net + position + sector + correlation</div></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Near cap / cluster</div><div class="display-6">{{ guardrail_summary.NEAR|default:0 }}</div><div class="small text-muted">Near deployment cap or cluster limit</div></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Over guardrails</div><div class="display-6">{{ guardrail_summary.OVER|default:0 }}</div><div class="small text-muted">Would exceed current limits</div></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Missing profile / plan</div><div class="display-6">{{ guardrail_summary.MISSING|default:0 }}</div><div class="small text-muted">Set allocation controls or generate plan</div></div></div></div>
+  </div>
+
+  {% if signals %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Instrument</th>
+            <th>Watchlist</th>
+            <th>Strategy</th>
+            <th>TF</th>
+            <th>Dir</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Outcome</th>
+            <th>Price</th>
+            <th>Suggested size</th>
+            <th>Capital fit</th>
+            <th>Guardrails</th>
+            <th>Score</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in signals %}
+            <tr>
+              <td class="text-nowrap">{{ s.generated_at|date:"Y-m-d H:i" }}</td>
+              <td><a href="{% url 'signals:detail' s.pk %}">{{ s.instrument.symbol }}</a></td>
+              <td>
+                {% if s.instrument_id in watchlist_instrument_ids %}
+                  <form method="post" action="{% url 'portfolios:watchlist_remove_instrument' s.instrument_id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button class="btn btn-sm btn-outline-danger">Remove</button>
+                  </form>
+                {% else %}
+                  <form method="post" action="{% url 'portfolios:watchlist_add_instrument' s.instrument_id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button class="btn btn-sm btn-outline-primary">Add</button>
+                  </form>
+                {% endif %}
+              </td>
+              <td>{{ s.strategy.name }}</td>
+              <td>{{ s.timeframe }}</td>
+              <td>{{ s.direction }}</td>
+              <td>{{ s.signal_label|default:s.signal_kind }}</td>
+              <td>{{ s.status }}</td>
+              <td>{% if s.outcome %}{{ s.outcome.outcome_label|default:s.outcome.status }}{% else %}—{% endif %}</td>
+              <td>{% if s.display_price is not None %}{{ s.display_price }}{% else %}—{% endif %}</td>
+              <td>
+                {% with alloc=allocation_preview|get_item:s.pk %}
+                  {% if alloc.suggested_qty %}
+                    <div>{{ alloc.suggested_qty }} units</div>
+                    <div class="small text-muted">${{ alloc.suggested_cost }}{% if alloc.suggested_weight_pct is not None %} • {{ alloc.suggested_weight_pct }}% acct{% endif %}</div>
+                  {% else %}—{% endif %}
+                {% endwith %}
+              </td>
+              <td>
+                {% with alloc=allocation_preview|get_item:s.pk %}
+                  {% if alloc.fits_headroom is None %}<span class="badge text-bg-secondary">no profile</span>
+                  {% elif alloc.fits_headroom %}<span class="badge text-bg-success">fits</span>
+                  {% else %}<span class="badge text-bg-warning">tight</span>{% endif %}
+                {% endwith %}
+              </td>
+              <td>
+                {% with alloc=allocation_preview|get_item:s.pk %}
+                  {% with g=alloc.guardrails %}
+                    {% if g.overall_posture == "OVER" %}<span class="badge text-bg-danger">over</span>
+                    {% elif g.overall_posture == "NEAR" %}<span class="badge text-bg-warning">near</span>
+                    {% elif g.overall_posture == "OK" %}<span class="badge text-bg-success">fits</span>
+                    {% else %}<span class="badge text-bg-secondary">{{ g.overall_label }}</span>{% endif %}
+                    {% if g.sector_label %}<div class="small text-muted mt-1">{{ g.sector_label }}</div>{% endif %}
+                    <div class="small text-muted">{% if g.projected_net_exposure_pct is not None %}Net {{ g.projected_net_exposure_pct }}%{% else %}Net —{% endif %} • {% if g.projected_position_weight_pct is not None %}Pos {{ g.projected_position_weight_pct }}%{% else %}Pos —{% endif %}</div>
+                    <div class="small text-muted">{% if g.projected_sector_weight_pct is not None %}Sec {{ g.projected_sector_weight_pct }}%{% else %}Sec —{% endif %}{% if g.max_net_exposure_pct is not None %} • Cap {{ g.max_net_exposure_pct }}%{% endif %}</div>
+                    <div class="small text-muted">Corr {% if g.high_correlation_count is not None %}{{ g.high_correlation_count }}/{{ g.max_high_correlation_positions }}{% else %}—{% endif %}{% if g.high_correlation_threshold %} @ {{ g.high_correlation_threshold }}{% endif %}</div>
+                    {% if g.high_correlation_symbols %}<div class="small text-muted">{% for item in g.high_correlation_symbols %}{{ item.symbol }} ({{ item.correlation }}){% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+                    {% if g.messages %}<div class="small text-muted">{{ g.messages.0 }}</div>{% endif %}
+                  {% endwith %}
+                {% endwith %}
+              </td>
+              <td>{% if s.score %}{{ s.score }}{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="alert alert-info">No signals match the current filters.</div>
+  {% endif %}
+{% endblock %}

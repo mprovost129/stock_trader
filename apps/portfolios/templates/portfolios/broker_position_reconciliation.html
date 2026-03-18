@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+
+{% block title %}Broker Position Reconciliation{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h1 class="h3 mb-1">Broker position reconciliation</h1>
+    <div class="text-muted small">Upload a broker/export CSV to compare symbol quantities against tracked open holdings without storing credentials or auto-mutating positions.</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:risk_settings' %}">Allocation controls</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}">Holdings</a>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Upload broker/export CSV</h2>
+        <form method="post" enctype="multipart/form-data" class="mb-3">
+          {% csrf_token %}
+          {% for field in form %}
+            <div class="mb-3">
+              <label class="form-label">{{ field.label }}</label>
+              {{ field }}
+              {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+              {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+          {% endfor %}
+          <button class="btn btn-primary">Preview reconciliation</button>
+        </form>
+        <div class="small text-muted mb-3">Expected CSV headers: <code>{{ sample_headers }}</code></div>
+        {% if parse_errors %}
+          <div class="alert alert-danger py-2">
+            {% for error in parse_errors %}<div>{{ error }}</div>{% endfor %}
+          </div>
+        {% endif %}
+        {% if preview_rows %}
+          <form method="post" class="d-inline">
+            {% csrf_token %}
+            <input type="hidden" name="clear_preview" value="1">
+            <button class="btn btn-sm btn-outline-secondary">Clear preview</button>
+          </form>
+        {% endif %}
+        <hr>
+        <form method="get" class="row g-2 align-items-end">
+          <div class="col-md-8">
+            <label class="form-label">Account filter</label>
+            <select name="account" class="form-select">
+              <option value="">All accounts</option>
+              {% for option in account_options %}
+                <option value="{{ option }}" {% if account_filter == option %}selected{% endif %}>{{ option }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <button class="btn btn-outline-secondary w-100">Apply</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <h2 class="h5 mb-0">Mismatch summary</h2>
+          {% if saved_run %}<a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:broker_position_reconciliation_run_detail' saved_run.pk %}">Open saved run #{{ saved_run.pk }}</a>{% endif %}
+        </div>
+
+        {% if reconciliation %}
+          <div class="row g-2 mb-3">
+            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Tracked open holdings</div><div class="fw-semibold">{{ reconciliation.tracked_open_count }}</div></div></div>
+            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Import-ready rows</div><div class="fw-semibold">{{ reconciliation.import_ready_count }}</div></div></div>
+            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Exact matches</div><div class="fw-semibold">{{ reconciliation.exact_match_count }}</div></div></div>
+            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Quantity mismatches</div><div class="fw-semibold">{{ reconciliation.quantity_mismatch_count }}</div></div></div>
+            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Broker-only</div><div class="fw-semibold">{{ reconciliation.broker_only_count }}</div></div></div>
+            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Tracked-only</div><div class="fw-semibold">{{ reconciliation.tracked_only_count }}</div></div></div>
+            <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Tracked market value</div><div class="fw-semibold">${{ reconciliation.total_tracked_market_value }}</div></div></div>
+            <div class="col-md-6"><div class="border rounded p-2 h-100"><div class="small text-muted">Imported market value</div><div class="fw-semibold">${{ reconciliation.total_imported_market_value }}</div></div></div>
+          </div>
+          <div class="alert alert-secondary py-2">
+            Market-value drift: {% if reconciliation.market_value_drift > 0 %}+{% endif %}${{ reconciliation.market_value_drift }}.
+            {% if account_filter %}Showing saved runs filtered to <strong>{{ account_filter }}</strong>.{% else %}If you use multiple broker accounts, add an account label on upload so saved runs stay grouped cleanly.{% endif %}
+          </div>
+
+          {% if reconciliation.quantity_mismatches %}
+            <h3 class="h6">Quantity mismatches</h3>
+            <div class="table-responsive mb-3">
+              <table class="table table-sm align-middle">
+                <thead><tr><th>Symbol</th><th>Tracked qty</th><th>Broker qty</th><th>Diff</th><th>Broker value</th><th>Next step</th></tr></thead>
+                <tbody>
+                  {% for item in reconciliation.quantity_mismatches %}
+                    <tr>
+                      <td><a href="{% url 'portfolios:holding_detail' item.tracked.pk %}">{{ item.row.symbol }}</a></td>
+                      <td>{{ item.tracked_quantity }}</td>
+                      <td>{{ item.imported_quantity }}</td>
+                      <td>{% if item.quantity_diff > 0 %}+{% endif %}{{ item.quantity_diff }}</td>
+                      <td>{% if item.imported_market_value is not None %}${{ item.imported_market_value }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                      <td>{% if item.quantity_diff > 0 %}Tracked qty is higher. Review for sale/close.{% else %}Broker qty is higher. Review for add shares.{% endif %}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+
+          {% if reconciliation.broker_only %}
+            <h3 class="h6">Broker-only symbols</h3>
+            <div class="table-responsive mb-3">
+              <table class="table table-sm align-middle">
+                <thead><tr><th>Symbol</th><th>Broker qty</th><th>Broker value</th><th>Next step</th></tr></thead>
+                <tbody>
+                  {% for item in reconciliation.broker_only %}
+                    <tr>
+                      <td>{{ item.row.symbol }}</td>
+                      <td>{{ item.row.quantity }}</td>
+                      <td>{% if item.row.market_value is not None %}${{ item.row.market_value }}{% elif item.row.market_price is not None %}${{ item.row.market_price }} each{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                      <td><a href="{% url 'portfolios:holding_add' %}">Add tracked holding</a></td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+
+          {% if reconciliation.tracked_only %}
+            <h3 class="h6">Tracked-only symbols</h3>
+            <div class="table-responsive mb-3">
+              <table class="table table-sm align-middle">
+                <thead><tr><th>Symbol</th><th>Tracked qty</th><th>Last import flag</th><th>Next step</th></tr></thead>
+                <tbody>
+                  {% for position in reconciliation.tracked_only %}
+                    <tr>
+                      <td><a href="{% url 'portfolios:holding_detail' position.pk %}">{{ position.instrument.symbol }}</a></td>
+                      <td>{{ position.quantity }}</td>
+                      <td>{% if position.missing_from_latest_import %}<span class="badge text-bg-warning">Missing from latest holding import</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                      <td>Review whether the broker export was filtered or this holding needs a close/import update.</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+
+          {% if reconciliation.exact_matches %}
+            <h3 class="h6">Exact quantity matches</h3>
+            <div class="small text-muted mb-2">Showing up to 25 matched rows so the review is not only about problems.</div>
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead><tr><th>Symbol</th><th>Tracked qty</th><th>Broker qty</th></tr></thead>
+                <tbody>
+                  {% for item in reconciliation.exact_matches %}
+                    <tr><td><a href="{% url 'portfolios:holding_detail' item.tracked.pk %}">{{ item.row.symbol }}</a></td><td>{{ item.tracked_quantity }}</td><td>{{ item.imported_quantity }}</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+        {% else %}
+          <div class="text-muted">Upload a broker/export CSV to compare symbol-by-symbol positions against tracked holdings.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if preview_rows %}
+  <div class="card shadow-sm mt-3">
+    <div class="card-body">
+      <h2 class="h5 mb-3">Row preview</h2>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>Row</th><th>Symbol</th><th>Qty</th><th>Market price</th><th>Market value</th><th>Status</th><th>Message</th></tr></thead>
+          <tbody>
+            {% for row in preview_rows %}
+              <tr>
+                <td>{{ row.row_number }}</td>
+                <td>{{ row.symbol }}</td>
+                <td>{{ row.quantity|default:'—' }}</td>
+                <td>{{ row.market_price|default:'—' }}</td>
+                <td>{{ row.market_value|default:'—' }}</td>
+                <td>{% if row.status == 'ready' %}<span class="badge text-bg-success">Ready</span>{% else %}<span class="badge text-bg-danger">Error</span>{% endif %}</td>
+                <td>{{ row.message }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{% if recent_runs %}
+  <div class="card shadow-sm mt-3">
+    <div class="card-body">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <h2 class="h5 mb-0">Recent saved reconciliation runs</h2>
+        {% if saved_run %}<a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:broker_position_reconciliation_run_detail' saved_run.pk %}">Open latest saved run</a>{% endif %}
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>Created</th><th>Account</th><th>Label</th><th>File</th><th>Mismatch counts</th><th>Unresolved</th><th></th></tr></thead>
+          <tbody>
+            {% for run in recent_runs %}
+              <tr>
+                <td>{{ run.created_at }}</td>
+                <td>{% if run.account_label %}{{ run.account_label }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td>{{ run.source_label }}</td>
+                <td>{% if run.uploaded_filename %}{{ run.uploaded_filename }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td>{{ run.summary.quantity_mismatch_count|default:0 }} mismatch / {{ run.summary.broker_only_count|default:0 }} broker-only / {{ run.summary.tracked_only_count|default:0 }} tracked-only</td>
+                <td>{% if run.unresolved_count %}<span class="badge text-bg-warning">{{ run.unresolved_count }}</span>{% else %}<span class="badge text-bg-success">0</span>{% endif %}</td>
+                <td><a href="{% url 'portfolios:broker_position_reconciliation_run_detail' run.pk %}">Open</a></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{% endblock %}

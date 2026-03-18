@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <h1 class="h4 mb-0">{{ title }}</h1>
+          <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}">Back</a>
+        </div>
+        {% if broker_apply_context %}
+        <div class="alert alert-info small">
+          <div class="fw-semibold mb-1">Apply + resolve broker reconciliation</div>
+          <div>This action will create the tracked holding for <strong>{{ broker_apply_context.symbol }}</strong>. When you submit, the mismatch from run #{{ broker_apply_context.run.pk }} will also be marked resolved as <strong>{{ broker_apply_context.action_label }}</strong>.</div>
+        </div>
+        {% endif %}
+        <form method="post">
+          {% csrf_token %}
+          {% if broker_apply_context %}
+          <input type="hidden" name="reconcile_apply_resolve" value="1">
+          <input type="hidden" name="reconcile_run_id" value="{{ broker_apply_context.run.pk }}">
+          <input type="hidden" name="reconcile_symbol" value="{{ broker_apply_context.symbol }}">
+          <input type="hidden" name="reconcile_resolution_action" value="{{ broker_apply_context.action }}">
+          {% endif %}
+          {% for field in form %}
+            <div class="mb-3">
+              <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+              {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+          {% endfor %}
+          <button class="btn btn-primary">Save position</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

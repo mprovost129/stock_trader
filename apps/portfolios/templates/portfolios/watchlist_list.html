@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% load dashboard_extras %}
+
+{% block title %}Watchlist{% endblock %}
+
+{% block content %}
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h1 class="h3 mb-1">Watchlists</h1>
+      <div class="text-muted small">Manage multiple symbol universes, tag themes, and choose which one drives your daily scan workflow.</div>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:watchlist_import' %}">Import into active</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}">Signals</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:home' %}">Dashboard</a>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-xl-4">
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div class="text-muted small">Active watchlist</div>
+              <div class="h4 mb-1">{{ watchlist.name }}</div>
+              <div class="small text-muted">{{ selection_count }} active symbols in the working scan universe.</div>
+            </div>
+            <span class="badge text-bg-dark">Current</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-3 mb-3">
+        <div class="col-md-4">
+          <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">High priority</div><div class="display-6">{{ priority_counts.HIGH|default:0 }}</div><div class="small text-muted"><a href="{% url 'portfolios:watchlist' %}?priority=HIGH">Open</a></div></div></div>
+        </div>
+        <div class="col-md-4">
+          <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Normal</div><div class="display-6">{{ priority_counts.NORMAL|default:0 }}</div><div class="small text-muted"><a href="{% url 'portfolios:watchlist' %}?priority=NORMAL">Open</a></div></div></div>
+        </div>
+        <div class="col-md-4">
+          <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Low</div><div class="display-6">{{ priority_counts.LOW|default:0 }}</div><div class="small text-muted"><a href="{% url 'portfolios:watchlist' %}?priority=LOW">Open</a></div></div></div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          <h2 class="h5 mb-2">Create watchlist</h2>
+          <div class="text-muted small mb-3">Use named watchlists for themes like earnings, swing ideas, dividend names, or crypto focus.</div>
+          <form method="post" action="{% url 'portfolios:watchlist_create' %}" class="row g-2 align-items-end">
+            {% csrf_token %}
+            <div class="col-12">
+              <label class="form-label small text-muted">Name</label>
+              {{ watchlist_create_form.name }}
+            </div>
+            <div class="col-12">
+              <button class="btn btn-primary w-100">Create watchlist</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Available watchlists</h2>
+          {% if watchlists %}
+            <div class="list-group list-group-flush">
+              {% for item in watchlists %}
+                <div class="list-group-item px-0 d-flex justify-content-between align-items-center">
+                  <div>
+                    <div class="fw-semibold">{{ item.name }}</div>
+                    <div class="small text-muted">{{ watchlist_counts|get_item:item.pk|default:0 }} active symbols</div>
+                  </div>
+                  <div class="d-flex gap-2 align-items-center">
+                    {% if item.is_active %}
+                      <span class="badge text-bg-success">Active</span>
+                    {% else %}
+                      <form method="post" action="{% url 'portfolios:watchlist_set_active' item.pk %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{% url 'portfolios:watchlist' %}">
+                        <button class="btn btn-sm btn-outline-primary">Use</button>
+                      </form>
+                    {% endif %}
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="alert alert-info mb-0">No watchlists yet.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-8">
+      <div class="row g-3 mb-3">
+        <div class="col-lg-12">
+          <div class="card shadow-sm h-100">
+            <div class="card-body">
+              <h2 class="h5 mb-2">Add symbol to {{ watchlist.name }}</h2>
+              <div class="text-muted small mb-3">Add an existing instrument from the universe to the currently active watchlist.</div>
+              <form method="post" action="{% url 'portfolios:watchlist_add_symbol' %}" class="row g-2 align-items-end">
+                {% csrf_token %}
+                <div class="col-sm-8">
+                  <label class="form-label small text-muted">Symbol</label>
+                  {{ watchlist_form.symbol }}
+                </div>
+                <div class="col-sm-4">
+                  <button class="btn btn-primary w-100">Add to active watchlist</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+              <h2 class="h5 mb-1">{{ watchlist.name }} symbols</h2>
+              <div class="small text-muted">These symbols drive the current scan universe shown throughout the app.</div>
+            </div>
+            <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:watchlist_import' %}">Import into {{ watchlist.name }}</a>
+          </div>
+          <div class="d-flex flex-wrap gap-2 mb-2">
+            <a class="btn btn-sm {% if not priority_filter %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'portfolios:watchlist' %}{% if sector_filter %}?sector={{ sector_filter|urlencode }}{% endif %}">All priorities</a>
+            <a class="btn btn-sm {% if priority_filter == 'HIGH' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'portfolios:watchlist' %}?priority=HIGH{% if sector_filter %}&sector={{ sector_filter|urlencode }}{% endif %}">High priority</a>
+            <a class="btn btn-sm {% if priority_filter == 'NORMAL' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'portfolios:watchlist' %}?priority=NORMAL{% if sector_filter %}&sector={{ sector_filter|urlencode }}{% endif %}">Normal</a>
+            <a class="btn btn-sm {% if priority_filter == 'LOW' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'portfolios:watchlist' %}?priority=LOW{% if sector_filter %}&sector={{ sector_filter|urlencode }}{% endif %}">Low</a>
+          </div>
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            <a class="btn btn-sm {% if not sector_filter %}btn-dark{% else %}btn-outline-dark{% endif %}" href="{% url 'portfolios:watchlist' %}{% if priority_filter %}?priority={{ priority_filter }}{% endif %}">All sectors</a>
+            {% for sector_name in sector_options %}
+              <a class="btn btn-sm {% if sector_filter == sector_name %}btn-dark{% else %}btn-outline-dark{% endif %}" href="{% url 'portfolios:watchlist' %}?{% if priority_filter %}priority={{ priority_filter }}&{% endif %}sector={{ sector_name|urlencode }}">{{ sector_name }}</a>
+            {% endfor %}
+          </div>
+          {% if sector_summaries %}
+            <div class="table-responsive mb-3">
+              <table class="table table-sm align-middle">
+                <thead>
+                  <tr><th>Sector / theme</th><th>Symbols</th><th>Held</th><th>Long / short</th><th>Avg score</th><th>Posture</th><th>Leaders</th></tr>
+                </thead>
+                <tbody>
+                  {% for sector in sector_summaries %}
+                    <tr>
+                      <td><a href="{% url 'portfolios:watchlist' %}?sector={{ sector.label|urlencode }}">{{ sector.label }}</a></td>
+                      <td>{{ sector.symbol_count }}</td>
+                      <td>{{ sector.held_count }}</td>
+                      <td>{{ sector.long_count }} / {{ sector.short_count }}</td>
+                      <td>{% if sector.avg_score is not None %}{{ sector.avg_score }}{% else %}—{% endif %}</td>
+                      <td>
+                        {% if sector.posture == 'Leading' %}<span class="badge text-bg-success">{{ sector.posture }}</span>
+                        {% elif sector.posture == 'Weakening' %}<span class="badge text-bg-danger">{{ sector.posture }}</span>
+                        {% else %}<span class="badge text-bg-secondary">{{ sector.posture }}</span>{% endif %}
+                      </td>
+                      <td>{% if sector.leaders %}{{ sector.leaders|join:', ' }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+          {% if selections %}
+            <div class="table-responsive">
+              <table class="table table-sm align-middle">
+                <thead>
+                  <tr>
+                    <th>Symbol</th>
+                    <th>Asset class</th>
+                    <th>Priority</th>
+                    <th>Sector / theme</th>
+                    <th>Last daily close</th>
+                    <th>Recent signal</th>
+                    <th>Note</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for item in selections %}
+                    {% with recent=recent_signal_map|get_item:item.instrument_id %}
+                      <tr>
+                        <td class="fw-semibold">{{ item.instrument.symbol }}</td>
+                        <td>{{ item.instrument.asset_class }}</td>
+                        <td>
+                          {% if item.priority == 'HIGH' %}<span class="badge text-bg-danger">High</span>
+                          {% elif item.priority == 'LOW' %}<span class="badge text-bg-secondary">Low</span>
+                          {% else %}<span class="badge text-bg-light border text-dark">Normal</span>{% endif %}
+                        </td>
+                        <td>{% if item.sector %}<span class="small">{{ item.sector }}</span>{% else %}<span class="text-muted">Uncategorized</span>{% endif %}</td>
+                        <td>{% if item.last_close is not None %}{{ item.last_close }}{% else %}—{% endif %}</td>
+                        <td>
+                          {% if recent %}
+                            <a href="{% url 'signals:detail' recent.pk %}">{{ recent.generated_at|date:"Y-m-d H:i" }}</a>
+                            <div class="small text-muted">{{ recent.direction }} • {{ recent.timeframe }} • score {{ recent.score|default:"—" }}</div>
+                          {% else %}
+                            <span class="text-muted">No recent signal</span>
+                          {% endif %}
+                        </td>
+                        <td>
+                          {% if item.note %}<span class="small">{{ item.note }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                        </td>
+                        <td>
+                          <div class="d-flex gap-2 flex-wrap">
+                            <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}?instrument={{ item.instrument.symbol }}">Signals</a>
+                            <a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:watchlist_selection_edit' item.instrument_id %}">Edit</a>
+                            <form method="post" action="{% url 'portfolios:watchlist_remove_instrument' item.instrument_id %}">
+                              {% csrf_token %}
+                              <button class="btn btn-sm btn-outline-danger">Remove</button>
+                            </form>
+                          </div>
+                        </td>
+                      </tr>
+                    {% endwith %}
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="alert alert-info mb-0">No active symbols are in {{ watchlist.name }} yet.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

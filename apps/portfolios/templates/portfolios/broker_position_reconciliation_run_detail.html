@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% load portfolio_extras %}
+
+{% block title %}Broker Reconciliation Run{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h1 class="h3 mb-1">Broker Reconciliation Run</h1>
+    <div class="text-muted small">Saved mismatch review so broker-export reconciliation is auditable over time instead of preview-only. Apply buttons open prefilled workflows but do not auto-mutate holdings. The Apply + resolve shortcut still requires you to submit the actual holding workflow before the mismatch is marked resolved.</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:broker_position_reconciliation' %}">Back to reconciliation</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:risk_settings' %}">Allocation Controls</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-4"><div class="card shadow-sm h-100"><div class="card-body">
+    <div class="small text-muted">Label</div><div class="fw-semibold">{{ run.source_label }}</div>
+    <div class="small text-muted mt-3">Created</div><div class="fw-semibold">{{ run.created_at }}</div>
+    <div class="small text-muted mt-3">Account</div><div class="fw-semibold">{% if run.account_label %}{{ run.account_label }}{% else %}<span class="text-muted">Unlabeled account</span>{% endif %}</div>
+    <div class="small text-muted mt-3">Uploaded file</div><div class="fw-semibold">{% if run.uploaded_filename %}{{ run.uploaded_filename }}{% else %}<span class="text-muted">—</span>{% endif %}</div>
+  </div></div></div>
+  <div class="col-lg-8"><div class="card shadow-sm h-100"><div class="card-body">
+    <div class="row g-2">
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Exact matches</div><div class="fw-semibold">{{ summary.exact_match_count|default:0 }}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Qty mismatches</div><div class="fw-semibold">{{ summary.quantity_mismatch_count|default:0 }}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Broker-only</div><div class="fw-semibold">{{ summary.broker_only_count|default:0 }}</div></div></div>
+      <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Tracked-only</div><div class="fw-semibold">{{ summary.tracked_only_count|default:0 }}</div></div></div>
+      <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Resolved issues</div><div class="fw-semibold">{{ summary.resolved_count|default:0 }}</div></div></div>
+      <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Unresolved issues</div><div class="fw-semibold">{% if summary.unresolved_count %}<span class="badge text-bg-warning">{{ summary.unresolved_count }}</span>{% else %}<span class="badge text-bg-success">0</span>{% endif %}</div></div></div>
+      <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Visible issues</div><div class="fw-semibold">{{ summary.visible_issue_count|default:summary.unresolved_count|default:0 }}</div></div></div>
+    </div>
+  </div></div></div>
+</div>
+
+<div class="card shadow-sm mb-3"><div class="card-body">
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+    <h2 class="h5 mb-0">Review filters</h2>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:broker_position_reconciliation_run_detail' run.pk %}">Clear filters</a>
+  </div>
+  <form method="get" class="row g-2 align-items-end">
+    <div class="col-md-4">
+      <label class="form-label">Issue bucket</label>
+      <select class="form-select" name="bucket">
+        <option value="">All issue buckets</option>
+        <option value="quantity_mismatches" {% if bucket_filter == 'quantity_mismatches' %}selected{% endif %}>Quantity mismatches</option>
+        <option value="broker_only" {% if bucket_filter == 'broker_only' %}selected{% endif %}>Broker-only</option>
+        <option value="tracked_only" {% if bucket_filter == 'tracked_only' %}selected{% endif %}>Tracked-only</option>
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Resolution status</label>
+      <select class="form-select" name="status">
+        <option value="">All</option>
+        <option value="unresolved" {% if status_filter == 'unresolved' %}selected{% endif %}>Unresolved only</option>
+        <option value="resolved" {% if status_filter == 'resolved' %}selected{% endif %}>Resolved only</option>
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Resolution action</label>
+      <select class="form-select" name="action">
+        <option value="">Any action</option>
+        {% for value, label in resolution_action_choices %}
+          <option value="{{ value }}" {% if action_filter == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 d-flex gap-2">
+      <button class="btn btn-primary">Apply filters</button>
+      <div class="small text-muted align-self-center">Use filters to focus on unresolved items, accepted differences, or specific mismatch buckets.</div>
+    </div>
+  </form>
+</div></div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-5">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <h2 class="h5 mb-3">Resolution breakdown</h2>
+      {% if resolution_stats %}
+        <div class="d-flex flex-wrap gap-2">
+          {% for item in resolution_stats %}
+            <span class="badge text-bg-light border">{{ item.label }}: {{ item.count }}</span>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="text-muted small">No saved resolutions yet for this run.</div>
+      {% endif %}
+    </div></div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <h2 class="h5 mb-3">Recent resolution history</h2>
+      {% if recent_resolutions %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>When</th><th>Symbol</th><th>Action</th><th>Note</th></tr></thead>
+            <tbody>
+              {% for item in recent_resolutions %}
+                <tr>
+                  <td>{{ item.resolved_at }}</td>
+                  <td>{{ item.symbol }}</td>
+                  <td><span class="badge text-bg-success">{{ item.get_action_display }}</span></td>
+                  <td>{% if item.note %}{{ item.note }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="text-muted small">No resolution history yet.</div>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+
+{% if summary.quantity_mismatches %}
+<div class="card shadow-sm mb-3"><div class="card-body">
+  <h2 class="h5 mb-3">Quantity mismatches</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead><tr><th>Symbol</th><th>Tracked qty</th><th>Broker qty</th><th>Diff</th><th>Apply</th><th>Resolution</th></tr></thead>
+      <tbody>
+        {% for item in summary.quantity_mismatches %}
+          {% with resolution=summary.resolutions|get_item:item.symbol %}
+          <tr>
+            <td>{% if item.tracked_position_id %}<a href="{% url 'portfolios:holding_detail' item.tracked_position_id %}">{{ item.symbol }}</a>{% else %}{{ item.symbol }}{% endif %}</td>
+            <td>{{ item.tracked_quantity }}</td><td>{{ item.imported_quantity }}</td><td>{{ item.quantity_diff }}</td>
+            <td><div class="d-flex flex-column gap-1"><a class="btn btn-sm btn-outline-secondary" href="{{ item.apply_action_url }}">{{ item.apply_action_label }}</a>{% if item.apply_and_resolve_url %}<a class="btn btn-sm btn-primary" href="{{ item.apply_and_resolve_url }}">{{ item.apply_action_label }} + resolve</a>{% endif %}</div></td>
+            <td>
+              {% if resolution %}<span class="badge text-bg-success">{{ resolution.get_action_display }}</span><div class="small text-muted mt-1">{{ resolution.resolved_at }}</div>{% if resolution.note %}<div class="small text-muted mt-1">{{ resolution.note }}</div>{% endif %}{% else %}
+              <form method="post" action="{% url 'portfolios:broker_position_reconciliation_resolve' run.pk item.symbol %}">{% csrf_token %}
+                <div class="row g-2">
+                  <div class="col-md-4">{{ resolution_form.action }}</div>
+                  <div class="col-md-4">{{ resolution_form.note_preset }}</div>
+                  <div class="col-md-3">{{ resolution_form.note }}</div>
+                  <div class="col-md-1"><button class="btn btn-sm btn-outline-primary w-100">Save</button></div>
+                </div>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endwith %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div></div>
+{% endif %}
+
+{% if summary.broker_only %}
+<div class="card shadow-sm mb-3"><div class="card-body">
+  <h2 class="h5 mb-3">Broker-only symbols</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead><tr><th>Symbol</th><th>Broker qty</th><th>Broker value</th><th>Apply</th><th>Resolution</th></tr></thead>
+      <tbody>
+        {% for item in summary.broker_only %}
+          {% with resolution=summary.resolutions|get_item:item.symbol %}
+          <tr>
+            <td>{{ item.symbol }}</td><td>{{ item.broker_quantity }}</td><td>{% if item.broker_market_value %}${{ item.broker_market_value }}{% elif item.broker_market_price %}${{ item.broker_market_price }} each{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            <td><div class="d-flex flex-column gap-1"><a class="btn btn-sm btn-outline-secondary" href="{{ item.apply_action_url }}">{{ item.apply_action_label }}</a>{% if item.apply_and_resolve_url %}<a class="btn btn-sm btn-primary" href="{{ item.apply_and_resolve_url }}">{{ item.apply_action_label }} + resolve</a>{% endif %}</div></td>
+            <td>
+              {% if resolution %}<span class="badge text-bg-success">{{ resolution.get_action_display }}</span><div class="small text-muted mt-1">{{ resolution.resolved_at }}</div>{% if resolution.note %}<div class="small text-muted mt-1">{{ resolution.note }}</div>{% endif %}{% else %}
+              <form method="post" action="{% url 'portfolios:broker_position_reconciliation_resolve' run.pk item.symbol %}">{% csrf_token %}
+                <div class="row g-2">
+                  <div class="col-md-4">{{ resolution_form.action }}</div>
+                  <div class="col-md-4">{{ resolution_form.note_preset }}</div>
+                  <div class="col-md-3">{{ resolution_form.note }}</div>
+                  <div class="col-md-1"><button class="btn btn-sm btn-outline-primary w-100">Save</button></div>
+                </div>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endwith %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div></div>
+{% endif %}
+
+{% if summary.tracked_only %}
+<div class="card shadow-sm mb-3"><div class="card-body">
+  <h2 class="h5 mb-3">Tracked-only symbols</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead><tr><th>Symbol</th><th>Tracked qty</th><th>Flag</th><th>Apply</th><th>Resolution</th></tr></thead>
+      <tbody>
+        {% for item in summary.tracked_only %}
+          {% with resolution=summary.resolutions|get_item:item.symbol %}
+          <tr>
+            <td>{% if item.tracked_position_id %}<a href="{% url 'portfolios:holding_detail' item.tracked_position_id %}">{{ item.symbol }}</a>{% else %}{{ item.symbol }}{% endif %}</td>
+            <td>{{ item.tracked_quantity }}</td><td>{% if item.missing_from_latest_import %}<span class="badge text-bg-warning">Missing from latest holding import</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            <td><div class="d-flex flex-column gap-1"><a class="btn btn-sm btn-outline-secondary" href="{{ item.apply_action_url }}">{{ item.apply_action_label }}</a>{% if item.apply_and_resolve_url %}<a class="btn btn-sm btn-primary" href="{{ item.apply_and_resolve_url }}">{{ item.apply_action_label }} + resolve</a>{% endif %}</div></td>
+            <td>
+              {% if resolution %}<span class="badge text-bg-success">{{ resolution.get_action_display }}</span><div class="small text-muted mt-1">{{ resolution.resolved_at }}</div>{% if resolution.note %}<div class="small text-muted mt-1">{{ resolution.note }}</div>{% endif %}{% else %}
+              <form method="post" action="{% url 'portfolios:broker_position_reconciliation_resolve' run.pk item.symbol %}">{% csrf_token %}
+                <div class="row g-2">
+                  <div class="col-md-4">{{ resolution_form.action }}</div>
+                  <div class="col-md-4">{{ resolution_form.note_preset }}</div>
+                  <div class="col-md-3">{{ resolution_form.note }}</div>
+                  <div class="col-md-1"><button class="btn btn-sm btn-outline-primary w-100">Save</button></div>
+                </div>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endwith %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div></div>
+{% endif %}
+
+{% if not summary.quantity_mismatches and not summary.broker_only and not summary.tracked_only %}
+<div class="alert alert-light border">No reconciliation issues match the current filters.</div>
+{% endif %}
+
+<div class="card shadow-sm"><div class="card-body">
+  <h2 class="h5 mb-3">Stored row preview</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead><tr><th>Row</th><th>Symbol</th><th>Qty</th><th>Market price</th><th>Market value</th><th>Status</th><th>Message</th></tr></thead>
+      <tbody>
+        {% for row in preview_rows %}
+        <tr>
+          <td>{{ row.row_number }}</td><td>{{ row.symbol }}</td><td>{{ row.quantity|default:'—' }}</td><td>{{ row.market_price|default:'—' }}</td><td>{{ row.market_value|default:'—' }}</td><td>{% if row.status == 'ready' %}<span class="badge text-bg-success">Ready</span>{% else %}<span class="badge text-bg-danger">Error</span>{% endif %}</td><td>{{ row.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div></div>
+{% endblock %}

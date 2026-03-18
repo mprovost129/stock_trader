@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+
+{% block title %}Trade Analytics{% endblock %}
+
+{% block content %}
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h1 class="h3 mb-1">Trade analytics</h1>
+      <div class="text-muted small">Review which score buckets, strategies, and timeframes are actually working before you trust them more.</div>
+    </div>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:home' %}">Back to dashboard</a>
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label">Timeframe</label>
+          <select name="timeframe" class="form-select">
+            <option value="">All timeframes</option>
+            {% for item in timeframe_choices %}
+              <option value="{{ item }}" {% if timeframe == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Strategy</label>
+          <select name="strategy" class="form-select">
+            <option value="">All strategies</option>
+            {% for item in strategy_choices %}
+              <option value="{{ item }}" {% if strategy == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Min sample size</label>
+          <input type="number" min="1" name="min_count" class="form-control" value="{{ min_count }}">
+        </div>
+        <div class="col-md-3 d-flex gap-2">
+          <button type="submit" class="btn btn-primary">Apply filters</button>
+          <a class="btn btn-outline-secondary" href="{% url 'dashboard:analytics' %}">Reset</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-4">
+      <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Closed paper trades</div><div class="display-6">{{ analytics.summary.paper_closed_count|default:0 }}</div><div class="small text-muted mt-2">Win rate: {% if analytics.summary.paper_win_rate is not None %}{{ analytics.summary.paper_win_rate }}%{% else %}—{% endif %}</div><div class="small text-muted">Avg P&L: {% if analytics.summary.paper_avg_pnl_pct is not None %}{{ analytics.summary.paper_avg_pnl_pct }}%{% else %}—{% endif %}</div></div></div>
+    </div>
+    <div class="col-md-4">
+      <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Evaluated outcomes</div><div class="display-6">{{ analytics.summary.outcomes_evaluated_count|default:0 }}</div><div class="small text-muted mt-2">Win rate: {% if analytics.summary.outcomes_win_rate is not None %}{{ analytics.summary.outcomes_win_rate }}%{% else %}—{% endif %}</div><div class="small text-muted">Avg return: {% if analytics.summary.outcomes_avg_return_pct is not None %}{{ analytics.summary.outcomes_avg_return_pct }}%{% else %}—{% endif %}</div></div></div>
+    </div>
+    <div class="col-md-4">
+      <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Best score bucket</div><div class="display-6">{% if analytics.summary.best_paper_bucket %}{{ analytics.summary.best_paper_bucket.label }}{% else %}—{% endif %}</div><div class="small text-muted mt-2">{% if analytics.summary.best_paper_bucket %}{{ analytics.summary.best_paper_bucket.win_rate }}% win rate across {{ analytics.summary.best_paper_bucket.count }} closed paper trades{% else %}Not enough closed trades yet{% endif %}</div></div></div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Closed paper trades by score bucket</h2>
+          {% if analytics.paper_by_bucket %}
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead><tr><th>Score bucket</th><th>Count</th><th>Wins</th><th>Losses</th><th>Win rate</th><th>Avg P&amp;L %</th><th>Verdict</th></tr></thead>
+                <tbody>
+                  {% for row in analytics.paper_by_bucket %}
+                    <tr>
+                      <td>{{ row.label }}</td><td>{{ row.count }}</td><td>{{ row.wins }}</td><td>{{ row.losses }}</td><td>{% if row.win_rate is not None %}{{ row.win_rate }}%{% else %}—{% endif %}</td><td>{% if row.avg_pnl_pct is not None %}{{ row.avg_pnl_pct }}%{% else %}—{% endif %}</td><td>{{ row.verdict }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="text-muted">No closed paper-trade rows match the current filters yet.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Evaluated outcomes by score bucket</h2>
+          {% if analytics.outcomes_by_bucket %}
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead><tr><th>Score bucket</th><th>Count</th><th>Wins</th><th>Losses</th><th>Mixed</th><th>Win rate</th><th>Avg return %</th></tr></thead>
+                <tbody>
+                  {% for row in analytics.outcomes_by_bucket %}
+                    <tr>
+                      <td>{{ row.label }}</td><td>{{ row.count }}</td><td>{{ row.wins }}</td><td>{{ row.losses }}</td><td>{{ row.mixed }}</td><td>{% if row.win_rate is not None %}{{ row.win_rate }}%{% else %}—{% endif %}</td><td>{% if row.avg_return_pct is not None %}{{ row.avg_return_pct }}%{% else %}—{% endif %}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="text-muted">No evaluated signal outcomes match the current filters yet.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Closed paper trades by strategy</h2>
+          {% if analytics.paper_by_strategy %}
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead><tr><th>Strategy</th><th>Count</th><th>Win rate</th><th>Avg P&amp;L %</th></tr></thead>
+                <tbody>
+                  {% for row in analytics.paper_by_strategy %}
+                    <tr><td>{{ row.label }}</td><td>{{ row.count }}</td><td>{% if row.win_rate is not None %}{{ row.win_rate }}%{% else %}—{% endif %}</td><td>{% if row.avg_pnl_pct is not None %}{{ row.avg_pnl_pct }}%{% else %}—{% endif %}</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="text-muted">No strategy-level paper-trade rows yet.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Closed paper trades by timeframe</h2>
+          {% if analytics.paper_by_timeframe %}
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead><tr><th>Timeframe</th><th>Count</th><th>Win rate</th><th>Avg P&amp;L %</th></tr></thead>
+                <tbody>
+                  {% for row in analytics.paper_by_timeframe %}
+                    <tr><td>{{ row.label }}</td><td>{{ row.count }}</td><td>{% if row.win_rate is not None %}{{ row.win_rate }}%{% else %}—{% endif %}</td><td>{% if row.avg_pnl_pct is not None %}{{ row.avg_pnl_pct }}%{% else %}—{% endif %}</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="text-muted">No timeframe-level paper-trade rows yet.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

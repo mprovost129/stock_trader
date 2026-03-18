@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Journal{% endblock %}
+
+{% block content %}
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="h3 mb-0">Journal</h1>
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}">Signals</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:home' %}">Dashboard</a>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-3"><div class="card shadow-sm"><div class="card-body"><div class="text-muted small">Entries</div><div class="h3 mb-0">{{ stats.total|default:0 }}</div></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm"><div class="card-body"><div class="text-muted small">Took it</div><div class="h3 mb-0">{{ stats.yes|default:0 }}</div></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm"><div class="card-body"><div class="text-muted small">Wins</div><div class="h3 mb-0">{{ stats.wins|default:0 }}</div></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm"><div class="card-body"><div class="text-muted small">Losses</div><div class="h3 mb-0">{{ stats.losses|default:0 }}</div></div></div></div>
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label">Decision</label>
+          <select class="form-select" name="decision">
+            <option value="">All</option>
+            <option value="YES" {% if decision_filter == 'YES' %}selected{% endif %}>YES</option>
+            <option value="NO" {% if decision_filter == 'NO' %}selected{% endif %}>NO</option>
+            <option value="SKIP" {% if decision_filter == 'SKIP' %}selected{% endif %}>SKIP</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Outcome</label>
+          <select class="form-select" name="outcome">
+            <option value="">All</option>
+            <option value="WIN" {% if outcome_filter == 'WIN' %}selected{% endif %}>WIN</option>
+            <option value="LOSS" {% if outcome_filter == 'LOSS' %}selected{% endif %}>LOSS</option>
+            <option value="BREAKEVEN" {% if outcome_filter == 'BREAKEVEN' %}selected{% endif %}>BREAKEVEN</option>
+            <option value="UNKNOWN" {% if outcome_filter == 'UNKNOWN' %}selected{% endif %}>UNKNOWN</option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Tag contains</label>
+          <input class="form-control" type="text" name="tag" value="{{ tag_filter }}" />
+        </div>
+        <div class="col-md-2 d-flex gap-2">
+          <button class="btn btn-primary w-100" type="submit">Filter</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {% if entries %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Decision</th>
+            <th>Outcome</th>
+            <th>R</th>
+            <th>Signal</th>
+            <th>Tags</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for e in entries %}
+            <tr>
+              <td class="text-nowrap">{{ e.decided_at|date:"Y-m-d H:i" }}</td>
+              <td>{{ e.decision }}</td>
+              <td>{{ e.outcome }}</td>
+              <td>{{ e.realized_r|default:"" }}</td>
+              <td>
+                {% if e.signal %}
+                  <a href="{% url 'signals:detail' e.signal.pk %}">{{ e.signal.instrument.symbol }} — {{ e.signal.strategy.slug }}</a>
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td class="small text-muted">{{ e.tags|default:"—" }}</td>
+              <td class="small text-muted">{{ e.notes|truncatechars:120 }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="alert alert-info">No journal entries yet.</div>
+  {% endif %}
+{% endblock %}
