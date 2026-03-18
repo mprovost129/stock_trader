@@ -3,6 +3,8 @@ from __future__ import annotations
 from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
+from django.db import DEFAULT_DB_ALIAS, connections
+from django.db.migrations.executor import MigrationExecutor
 
 
 class Command(BaseCommand):
@@ -41,6 +43,8 @@ class Command(BaseCommand):
         max_symbols = int(options.get("max_symbols") or 0)
         throttle_seconds = float(options.get("throttle_seconds") or 0)
         dry_run = bool(options.get("dry_run"))
+
+        _assert_schema_ready()
 
         self.stdout.write(self.style.SUCCESS("Starting operator cycle."))
         self.stdout.write(
@@ -103,3 +107,11 @@ class Command(BaseCommand):
             call_command("analyze_trade_performance", username=username)
 
         self.stdout.write(self.style.SUCCESS("Operator cycle complete."))
+
+
+def _assert_schema_ready() -> None:
+    connection = connections[DEFAULT_DB_ALIAS]
+    executor = MigrationExecutor(connection)
+    targets = executor.loader.graph.leaf_nodes()
+    if executor.migration_plan(targets):
+        raise CommandError("Database schema is not up to date. Run: python manage.py migrate")

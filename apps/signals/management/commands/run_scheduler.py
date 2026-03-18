@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
+from django.db import DEFAULT_DB_ALIAS, connections
+from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
 
 from apps.marketdata.services.runtime import classify_runtime_mode
@@ -77,6 +79,8 @@ class Command(BaseCommand):
         position_sync_every = max(1, int(options.get("position_sync_every") or 1))
         held_position_check_every = max(1, int(options.get("held_position_check_every") or 1))
         portfolio_snapshot_every = max(0, int(options.get("portfolio_snapshot_every") or 0))
+
+        _assert_schema_ready()
 
         self.stdout.write(self.style.SUCCESS("Starting scheduled runner."))
         self.stdout.write(
@@ -195,3 +199,11 @@ class Command(BaseCommand):
                 next_sleep = open_sleep_seconds if runtime.market_open else closed_sleep_seconds
             self.stdout.write(f"Sleeping {next_sleep} second(s) before next cycle...")
             time.sleep(next_sleep)
+
+
+def _assert_schema_ready() -> None:
+    connection = connections[DEFAULT_DB_ALIAS]
+    executor = MigrationExecutor(connection)
+    targets = executor.loader.graph.leaf_nodes()
+    if executor.migration_plan(targets):
+        raise CommandError("Database schema is not up to date. Run: python manage.py migrate")
