@@ -2765,10 +2765,10 @@ def summarize_account_exposure_heatmap(*, user) -> dict:
 
         if top_sector and (hottest_sector is None or Decimal(top_sector.get("weight_pct") or 0) > Decimal(hottest_sector.get("top_sector", {}).get("weight_pct") or 0)):
             hottest_sector = row
-        if top_position and (heaviest_position is None or Decimal(top_position.get("weight_pct") or 0) > Decimal(heaviest_position.get("top_position", {}).get("weight_pct") or 0)):
+        if top_position and (heaviest_position is None or Decimal(top_position.get("weight_pct") or 0) > Decimal((heaviest_position.get("top_position") or {}).get("weight_pct") or 0)):
             heaviest_position = row
 
-    rows.sort(key=lambda row: (-row["crowding_score"], -(Decimal(row.get("top_sector", {}).get("weight_pct") or 0)), -(Decimal(row.get("top_position", {}).get("weight_pct") or 0)), row["account_label"].lower()))
+    rows.sort(key=lambda row: (-row["crowding_score"], -(Decimal((row.get("top_sector") or {}).get("weight_pct") or 0)), -(Decimal((row.get("top_position") or {}).get("weight_pct") or 0)), row["account_label"].lower()))
     return {
         "rows": rows,
         "count": len(rows),
