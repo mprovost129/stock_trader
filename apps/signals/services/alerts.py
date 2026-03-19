@@ -155,6 +155,10 @@ def evaluate_signal_for_alert(*, signal: Signal) -> AlertDecision:
     if not hasattr(signal, "trade_plan"):
         return AlertDecision(False, "missing_trade_plan")
 
+    plan = signal.trade_plan
+    if not plan.suggested_qty or int(plan.suggested_qty) <= 0:
+        return AlertDecision(False, "zero_qty")
+
     if not _passes_price_filter(signal):
         return AlertDecision(False, "price_filtered")
 
