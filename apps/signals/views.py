@@ -101,8 +101,9 @@ def list_signals(request):
         .order_by("-ts")
         .values("close")[:1]
     )
+    user_signals = Signal.objects.filter(created_by=request.user)
     qs = (
-        Signal.objects.select_related("instrument", "strategy")
+        user_signals.select_related("instrument", "strategy")
         .annotate(display_price=Coalesce("trade_plan__entry_price", latest_close_subquery))
         .order_by("-generated_at")
     )
@@ -178,9 +179,9 @@ def list_signals(request):
     cash_headroom = portfolio_exposure.get("cash_headroom")
 
     score_summary = {
-        "high_conviction": Signal.objects.exclude(direction=Signal.Direction.FLAT).filter(status=Signal.Status.NEW, score__gte=80).count(),
-        "review_zone": Signal.objects.exclude(direction=Signal.Direction.FLAT).filter(status=Signal.Status.NEW, score__gte=60, score__lt=80).count(),
-        "below_review": Signal.objects.exclude(direction=Signal.Direction.FLAT).filter(status=Signal.Status.NEW).filter(models.Q(score__lt=60) | models.Q(score__isnull=True)).count(),
+        "high_conviction": user_signals.exclude(direction=Signal.Direction.FLAT).filter(status=Signal.Status.NEW, score__gte=80).count(),
+        "review_zone": user_signals.exclude(direction=Signal.Direction.FLAT).filter(status=Signal.Status.NEW, score__gte=60, score__lt=80).count(),
+        "below_review": user_signals.exclude(direction=Signal.Direction.FLAT).filter(status=Signal.Status.NEW).filter(models.Q(score__lt=60) | models.Q(score__isnull=True)).count(),
     }
 
     allocation_preview = {}
@@ -217,9 +218,7 @@ def list_signals(request):
             "guardrails": guardrails,
         }
     guardrail_summary["MISSING"] = guardrail_summary.get("NO_PROFILE", 0) + guardrail_summary.get("NO_PLAN", 0)
-    timeframe_choices = list(
-        Signal.objects.order_by().values_list("timeframe", flat=True).distinct()
-    )
+    timeframe_choices = list(user_signals.order_by().values_list("timeframe", flat=True).distinct())
     current_filters = _extract_signal_filter_params(request.GET)
     saved_presets = list(
         SavedFilterPreset.objects.filter(user=request.user, scope=SavedFilterPreset.Scope.SIGNALS)

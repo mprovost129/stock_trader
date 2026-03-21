@@ -78,3 +78,4 @@ SECURE_HSTS_PRELOAD = _env_bool("DJANGO_SECURE_HSTS_PRELOAD", True)
 
 # Keep homepage latency predictable on constrained web dynos.
 DASHBOARD_HOME_FAST_MODE = _env_bool("DASHBOARD_HOME_FAST_MODE", True)
+OPS_COMMAND_CENTER_FAST_MODE = _env_bool("OPS_COMMAND_CENTER_FAST_MODE", True)

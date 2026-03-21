@@ -48,6 +48,7 @@ class Signal(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=["-generated_at"], name="idx_signal_generated_at"),
+            models.Index(fields=["created_by", "status", "-generated_at"], name="idx_signal_user_stat_ct"),
             models.Index(fields=["instrument", "strategy"], name="idx_signal_inst_strategy"),
             models.Index(fields=["signal_kind", "signal_label"], name="idx_signal_kind_label"),
         ]

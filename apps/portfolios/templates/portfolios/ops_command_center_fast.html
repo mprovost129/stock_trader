@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Ops Command Center{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h1 class="h3 mb-1">Ops Command Center</h1>
+    <div class="text-muted small">Fast mode enabled for stable web performance.</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:home' %}">Dashboard</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:risk_settings' %}">Allocation Controls</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:stop_policy_followup' %}">Stop Policy Queue</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:broker_position_reconciliation' %}">Broker Reconciliation</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <div class="small text-muted">Open holdings</div>
+        <div class="display-6 fw-semibold">{{ open_holdings }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <div class="small text-muted">Recent unresolved reconciliation items</div>
+        <div class="display-6 fw-semibold">{{ recent_unresolved }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <div class="small text-muted">Latest broker runs shown</div>
+        <div class="display-6 fw-semibold">{{ recent_broker_runs|length }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h2 class="h5 mb-0">Recent Broker Reconciliation Runs</h2>
+      <a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:broker_position_reconciliation' %}">Open full workflow</a>
+    </div>
+    {% if recent_broker_runs %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>Run</th><th>Account</th><th>Unresolved</th><th></th></tr></thead>
+          <tbody>
+            {% for run in recent_broker_runs %}
+              <tr>
+                <td>{{ run.created_at|date:"Y-m-d H:i" }}</td>
+                <td>{{ run.account_label|default:run.source_label }}</td>
+                <td>{{ run.unresolved_count }}</td>
+                <td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:broker_position_reconciliation_run_detail' run.id %}">Open</a></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="small text-muted">No broker reconciliation runs recorded yet.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

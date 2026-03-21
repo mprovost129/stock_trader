@@ -4,8 +4,10 @@ from decimal import Decimal, InvalidOperation
 from django.db.models import OuterRef, Subquery
 from django.db.models.functions import Coalesce
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
@@ -1336,21 +1338,52 @@ def ops_command_center(request):
             messages.success(request, f"Evidence lifecycle scan complete: {result['expiring_soon_count']} expiring soon, {result['expired_count']} expired, {result['missing_retention_count']} missing retention.")
         return redirect("portfolios:ops_command_center")
 
-    followup = summarize_stop_policy_followup_queue(user=request.user, status_filter="ACTIONABLE", limit=25)
-    stop_policy_timeliness = summarize_stop_policy_timeliness(user=request.user)
-    stop_policy_exception_trends = summarize_stop_policy_exception_trends(user=request.user)
-    evidence_lifecycle_automation = summarize_evidence_lifecycle_automation(user=request.user)
-    broker_snapshot_posture = summarize_broker_snapshot_posture(user=request.user)
-    account_holding_queues = summarize_account_holding_queues(user=request.user)
-    account_drawdown_monitoring = summarize_account_drawdown_monitoring(user=request.user)
-    account_risk_posture = summarize_account_risk_posture(user=request.user)
-    account_stop_guardrails = summarize_account_stop_guardrails(user=request.user)
-    portfolio_health = summarize_portfolio_health_score(user=request.user)
-    portfolio_health_history = summarize_portfolio_health_history(user=request.user, limit=8)
+    if bool(getattr(settings, "OPS_COMMAND_CENTER_FAST_MODE", False)):
+        recent_broker_runs = list(
+            BrokerPositionImportRun.objects.filter(user=request.user)
+            .order_by("-created_at", "-id")[:8]
+        )
+        open_holdings = HeldPosition.objects.filter(user=request.user, status=HeldPosition.Status.OPEN).count()
+        recent_unresolved = sum(int(item.unresolved_count or 0) for item in recent_broker_runs[:3])
+        return render(
+            request,
+            "portfolios/ops_command_center_fast.html",
+            {
+                "open_holdings": open_holdings,
+                "recent_unresolved": recent_unresolved,
+                "recent_broker_runs": recent_broker_runs,
+            },
+        )
+
+    uid = request.user.pk
+    _cache_ttl = 120
+
+    def _cached(key, fn):
+        result = cache.get(key)
+        if result is None:
+            result = fn()
+            cache.set(key, result, _cache_ttl)
+        return result
+
+    followup = _cached(f"opscc:followup:{uid}", lambda: summarize_stop_policy_followup_queue(user=request.user, status_filter="ACTIONABLE", limit=25))
+    stop_policy_timeliness = _cached(f"opscc:stop_policy_timeliness:{uid}", lambda: summarize_stop_policy_timeliness(user=request.user))
+    stop_policy_exception_trends = _cached(f"opscc:stop_policy_exception_trends:{uid}", lambda: summarize_stop_policy_exception_trends(user=request.user))
+    evidence_lifecycle_automation = _cached(f"opscc:evidence_lifecycle_automation:{uid}", lambda: summarize_evidence_lifecycle_automation(user=request.user))
+    broker_snapshot_posture = _cached(f"opscc:broker_snapshot_posture:{uid}", lambda: summarize_broker_snapshot_posture(user=request.user))
+    account_holding_queues = _cached(f"opscc:account_holding_queues:{uid}", lambda: summarize_account_holding_queues(user=request.user))
+    account_drawdown_monitoring = _cached(f"opscc:account_drawdown_monitoring:{uid}", lambda: summarize_account_drawdown_monitoring(user=request.user))
+    account_risk_posture = _cached(f"opscc:account_risk_posture:{uid}", lambda: summarize_account_risk_posture(user=request.user))
+    account_stop_guardrails = _cached(f"opscc:account_stop_guardrails:{uid}", lambda: summarize_account_stop_guardrails(user=request.user))
+    portfolio_health = _cached(f"opscc:portfolio_health:{uid}", lambda: summarize_portfolio_health_score(user=request.user))
+    portfolio_health_history = _cached(f"opscc:portfolio_health_history:{uid}", lambda: summarize_portfolio_health_history(user=request.user, limit=8))
 
     delivery_channels = get_enabled_delivery_channels()
-    delivery_health = get_delivery_health_summary()
-    recent_failed_alerts = list(AlertDelivery.objects.filter(status=AlertDelivery.Status.FAILED).order_by("-created_at")[:8])
+    delivery_health = _cached(f"opscc:delivery_health:{uid}", lambda: get_delivery_health_summary())
+    recent_failed_alerts = list(
+        AlertDelivery.objects.select_related("signal", "signal__instrument")
+        .filter(signal__created_by=request.user, status=AlertDelivery.Status.FAILED)
+        .order_by("-created_at")[:8]
+    )
     recent_operator_notifications = list(
         OperatorNotification.objects.filter(
             kind__in=[
