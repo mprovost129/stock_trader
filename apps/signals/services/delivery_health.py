@@ -6,6 +6,8 @@ from datetime import timedelta
 from django.conf import settings
 from django.utils import timezone
 
+from apps.marketdata.models import Instrument
+from apps.marketdata.services.runtime import classify_runtime_mode
 from apps.signals.models import AlertDelivery
 
 
@@ -166,6 +168,10 @@ def _build_channel_status(*, enabled: bool, sent_count_window: int, failed_count
 
 
 def _build_drought_status(*, latest_success_at, latest_attempt_at, drought_minutes: int, now):
+    pause_reason = _drought_pause_reason(now=now)
+    if pause_reason:
+        return False, pause_reason
+
     if latest_success_at is None:
         if latest_attempt_at is None:
             return True, "No alert attempts have been recorded yet"
@@ -176,3 +182,32 @@ def _build_drought_status(*, latest_success_at, latest_attempt_at, drought_minut
         return True, f"Last successful alert was {mins} minutes ago"
     mins = int(age.total_seconds() // 60)
     return False, f"Last successful alert was {mins} minutes ago"
+
+
+def _drought_pause_reason(*, now):
+    runtime = classify_runtime_mode(
+        now=timezone.localtime(now),
+        start=getattr(settings, "EQUITY_ALERT_SESSION_START", "09:30"),
+        end=getattr(settings, "EQUITY_ALERT_SESSION_END", "16:00"),
+    )
+    if runtime.market_open:
+        return None
+    if _has_eligible_crypto_alert_candidate():
+        return None
+    return f"Drought checks paused while equity market is {runtime.reason.replace('_', ' ')} and no crypto alert is currently eligible"
+
+
+def _has_eligible_crypto_alert_candidate() -> bool:
+    # Import lazily to avoid a heavier module cycle at import time.
+    from apps.signals.services.alerts import evaluate_signal_for_alert, get_alert_candidates
+
+    candidates = (
+        get_alert_candidates()
+        .filter(instrument__asset_class=Instrument.AssetClass.CRYPTO)
+        .select_related("instrument", "trade_plan")
+        .order_by("-generated_at", "-id")
+    )
+    for signal in candidates:
+        if evaluate_signal_for_alert(signal=signal).should_send:
+            return True
+    return False
