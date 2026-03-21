@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+
+{% block title %}Data Freshness{% endblock %}
+
+{% block content %}
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h1 class="h3 mb-1">Data Freshness</h1>
+      <div class="text-muted small">Coverage and staleness diagnostics for your active watchlist.</div>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:home' %}">Dashboard</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:watchlist' %}">Watchlist</a>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <form method="get" class="d-flex align-items-center gap-2">
+        <label for="timeframe" class="small text-muted mb-0">Timeframe</label>
+        <select id="timeframe" name="timeframe" class="form-select form-select-sm" style="max-width: 120px;">
+          {% for tf in timeframe_choices %}
+            <option value="{{ tf }}" {% if timeframe == tf %}selected{% endif %}>{{ tf }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn btn-sm btn-primary">Refresh</button>
+      </form>
+      <div class="small text-muted mt-2">Stale threshold: {{ summary.threshold_minutes }} minutes.</div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-3">
+      <div class="card shadow-sm h-100"><div class="card-body"><div class="small text-muted">Selected symbols</div><div class="display-6">{{ summary.selected_count }}</div></div></div>
+    </div>
+    <div class="col-md-3">
+      <div class="card shadow-sm h-100"><div class="card-body"><div class="small text-muted">Fresh</div><div class="display-6 text-success">{{ summary.fresh_count }}</div></div></div>
+    </div>
+    <div class="col-md-3">
+      <div class="card shadow-sm h-100"><div class="card-body"><div class="small text-muted">Stale</div><div class="display-6 text-warning">{{ summary.stale_count }}</div></div></div>
+    </div>
+    <div class="col-md-3">
+      <div class="card shadow-sm h-100"><div class="card-body"><div class="small text-muted">Missing bars</div><div class="display-6 text-danger">{{ summary.missing_count }}</div></div></div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <h2 class="h5 mb-0">Stale / Missing Symbols</h2>
+        <div class="small text-muted">Top {{ summary.stale_or_missing_rows|length }} requiring attention</div>
+      </div>
+      {% if summary.stale_or_missing_rows %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>Symbol</th><th>Asset</th><th>Priority</th><th>Latest bar</th><th>Age (min)</th><th>Status</th></tr></thead>
+            <tbody>
+              {% for row in summary.stale_or_missing_rows %}
+                <tr>
+                  <td class="fw-semibold">{{ row.symbol }}</td>
+                  <td>{{ row.asset_class }}</td>
+                  <td>{{ row.priority }}</td>
+                  <td>{% if row.latest_ts %}{{ row.latest_ts|date:"Y-m-d H:i" }}{% else %}—{% endif %}</td>
+                  <td>{% if row.age_minutes is not None %}{{ row.age_minutes }}{% else %}—{% endif %}</td>
+                  <td>
+                    {% if row.is_missing %}<span class="badge text-bg-danger">missing</span>
+                    {% elif row.is_stale %}<span class="badge text-bg-warning">stale</span>
+                    {% else %}<span class="badge text-bg-success">fresh</span>{% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="text-muted">No stale or missing symbols for this timeframe.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <h2 class="h5 mb-0">Crypto Diagnostics</h2>
+        <div class="d-flex align-items-center gap-2">
+          <div class="small text-muted">Why crypto symbols may be skipped or delayed</div>
+          <form method="post" class="d-inline">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="clear_unsupported_crypto">
+            <button class="btn btn-sm btn-outline-warning" onclick="return confirm('Clear unsupported crypto flags for active watchlist symbols?');">Clear unsupported flags</button>
+          </form>
+          <form method="post" class="d-inline">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="clear_provider_cooldowns">
+            <button class="btn btn-sm btn-outline-secondary" onclick="return confirm('Clear provider cooldown flags for active watchlist symbols?');">Clear cooldowns</button>
+          </form>
+        </div>
+      </div>
+      {% if summary.crypto_diagnostics %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>Symbol</th><th>Latest bar</th><th>Age (min)</th><th>Data</th><th>Route status</th><th>Reason</th></tr></thead>
+            <tbody>
+              {% for row in summary.crypto_diagnostics %}
+                <tr>
+                  <td class="fw-semibold">{{ row.symbol }}</td>
+                  <td>{% if row.latest_ts %}{{ row.latest_ts|date:"Y-m-d H:i" }}{% else %}—{% endif %}</td>
+                  <td>{% if row.age_minutes is not None %}{{ row.age_minutes }}{% else %}—{% endif %}</td>
+                  <td>
+                    {% if row.is_missing %}<span class="badge text-bg-danger">missing</span>
+                    {% elif row.is_stale %}<span class="badge text-bg-warning">stale</span>
+                    {% else %}<span class="badge text-bg-success">fresh</span>{% endif %}
+                  </td>
+                  <td><span class="badge text-bg-secondary">{{ row.route_status }}</span></td>
+                  <td class="small text-muted">
+                    {% if row.unsupported_reason %}{{ row.unsupported_reason }}
+                    {% elif row.cooldown_reason %}{{ row.cooldown_reason }}
+                    {% elif row.invalid_symbol %}invalid_or_stable_symbol
+                    {% else %}eligible{% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="text-muted">No crypto symbols in the active watchlist.</div>
+      {% endif %}
+      <div class="small text-muted mt-3">
+        Suggested commands:
+        <code>python manage.py backfill_market_data --username {{ request.user.username }} --asset-class CRYPTO --timeframe {{ timeframe }} --batch-size 25 --max-cycles 20 --stop-when-complete</code>
+      </div>
+      <div class="mt-3 border rounded p-2 bg-light">
+        <div class="small fw-semibold mb-2">Quick action</div>
+        <form method="post" class="row g-2 align-items-end">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="run_targeted_crypto_ingest">
+          <div class="col-sm-3">
+            <label class="form-label small text-muted mb-1">Max symbols</label>
+            <select name="max_symbols" class="form-select form-select-sm">
+              <option value="5">5</option>
+              <option value="8" selected>8</option>
+              <option value="12">12</option>
+              <option value="20">20</option>
+            </select>
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label small text-muted mb-1">Throttle (sec)</label>
+            <select name="throttle_seconds" class="form-select form-select-sm">
+              <option value="0">0</option>
+              <option value="0.5">0.5</option>
+              <option value="1" selected>1</option>
+              <option value="2">2</option>
+            </select>
+          </div>
+          <div class="col-sm-6">
+            <button class="btn btn-sm btn-primary" onclick="return confirm('Queue targeted crypto ingest? Scheduler will process it in the background.');">Queue targeted crypto ingest</button>
+          </div>
+        </form>
+        <div class="small text-muted mt-2">
+          Pending jobs: <span class="fw-semibold">{{ pending_jobs_count }}</span>. The scheduler processes queued jobs automatically.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <h2 class="h5 mb-0">Ingestion Queue</h2>
+        <div class="small text-muted">Latest jobs for {{ request.user.username }}</div>
+      </div>
+      {% if recent_jobs %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>ID</th><th>Created</th><th>Source</th><th>Asset</th><th>Watchlist</th><th>Status</th><th>Details</th></tr></thead>
+            <tbody>
+              {% for job in recent_jobs %}
+                <tr>
+                  <td class="fw-semibold">#{{ job.id }}</td>
+                  <td>{{ job.created_at|date:"Y-m-d H:i" }}</td>
+                  <td>{{ job.get_source_display }}</td>
+                  <td>{{ job.asset_class|default:"ALL" }}</td>
+                  <td>{{ job.watchlist_name }}</td>
+                  <td>
+                    {% if job.status == "SUCCEEDED" %}<span class="badge text-bg-success">succeeded</span>
+                    {% elif job.status == "FAILED" %}<span class="badge text-bg-danger">failed</span>
+                    {% elif job.status == "RUNNING" %}<span class="badge text-bg-primary">running</span>
+                    {% else %}<span class="badge text-bg-secondary">pending</span>{% endif %}
+                  </td>
+                  <td class="small text-muted">
+                    {% if job.status == "FAILED" %}{{ job.last_error|truncatechars:120 }}
+                    {% elif job.finished_at %}done {{ job.finished_at|date:"H:i" }}
+                    {% else %}max={{ job.max_symbols }}, throttle={{ job.throttle_seconds }}s{% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="text-muted">No ingestion jobs yet.</div>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}

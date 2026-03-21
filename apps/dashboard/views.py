@@ -3,17 +3,21 @@ import logging
 from time import perf_counter
 
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.db.models import Avg, Count, Q
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.utils.http import urlencode
 
 from apps.journal.models import JournalEntry
 from apps.portfolios.models import HeldPosition, SavedFilterPreset, UserRiskProfile
 from apps.portfolios.watchlists import ensure_active_watchlist
 from apps.portfolios.services import assess_signal_guardrails, build_holding_health_snapshot, build_signal_correlation_context, summarize_account_drawdown_monitoring, summarize_account_exposure_heatmap, summarize_account_holding_queues, summarize_account_retention_override_posture, summarize_account_retention_template_drift, summarize_account_risk_posture, summarize_account_stop_guardrails, summarize_broker_snapshot_posture, summarize_evidence_lifecycle_automation, summarize_holding_performance, summarize_holding_risk_guardrails, summarize_holding_sector_exposure, summarize_open_holdings, summarize_portfolio_exposure, summarize_portfolio_health_history, summarize_portfolio_health_score, summarize_stop_discipline_history, summarize_stop_discipline_trends, summarize_stop_policy_exception_trends, summarize_stop_policy_timeliness, summarize_watchlist_sectors
-from apps.marketdata.models import PriceBar
+from apps.marketdata.models import IngestionJob, PriceBar
+from apps.marketdata.services.freshness import build_data_freshness_summary
+from apps.marketdata.services.ingestion_queue import enqueue_watchlist_ingest_job
+from apps.marketdata.services.ingestion_state import clear_provider_cooldowns, clear_unsupported_crypto_symbols
 from apps.signals.models import AlertDelivery, OperatorNotification, PaperTrade, PositionAlert, Signal, SignalOutcome
 from apps.signals.services.alerts import build_alert_queue_preview, build_next_session_queue, build_tuning_preview, get_enabled_delivery_channels
 from apps.signals.services.delivery_health import get_delivery_health_summary
@@ -629,3 +633,81 @@ def analytics(request):
         "timeframe_choices": timeframe_choices,
         "strategy_choices": strategy_choices,
     })
+
+
+@login_required
+def data_freshness(request):
+    timeframe = (request.GET.get("timeframe") or "1d").strip().lower()
+    if timeframe not in {"1m", "5m", "1d"}:
+        timeframe = "1d"
+    watchlist = ensure_active_watchlist(request.user)
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        symbols = []
+        if watchlist:
+            symbols = list(
+                watchlist.selections.filter(is_active=True, instrument__is_active=True, instrument__asset_class="CRYPTO")
+                .values_list("instrument__symbol", flat=True)
+            )
+        if action == "clear_unsupported_crypto":
+            cleared = clear_unsupported_crypto_symbols(symbols=symbols)
+            for tf in ("1d", "5m", "1m"):
+                cache.delete(f"freshness:{request.user.pk}:{watchlist.pk if watchlist else 0}:{tf}")
+            messages.success(request, f"Cleared {cleared} unsupported-crypto flag(s) for active watchlist symbols.")
+            return redirect(f"{request.path}?{urlencode({'timeframe': timeframe})}")
+        if action == "clear_provider_cooldowns":
+            cleared = clear_provider_cooldowns(symbols=symbols)
+            for tf in ("1d", "5m", "1m"):
+                cache.delete(f"freshness:{request.user.pk}:{watchlist.pk if watchlist else 0}:{tf}")
+            messages.success(request, f"Cleared {cleared} provider cooldown flag(s) for active watchlist symbols.")
+            return redirect(f"{request.path}?{urlencode({'timeframe': timeframe})}")
+        if action == "run_targeted_crypto_ingest":
+            if not watchlist:
+                messages.error(request, "No active watchlist found.")
+                return redirect(f"{request.path}?{urlencode({'timeframe': timeframe})}")
+            max_symbols_raw = (request.POST.get("max_symbols") or "8").strip()
+            throttle_raw = (request.POST.get("throttle_seconds") or "1").strip()
+            try:
+                max_symbols = max(1, min(int(max_symbols_raw), 30))
+            except ValueError:
+                max_symbols = 8
+            try:
+                throttle_seconds = max(0.0, min(float(throttle_raw), 5.0))
+            except ValueError:
+                throttle_seconds = 1.0
+            try:
+                job = enqueue_watchlist_ingest_job(
+                    user=request.user,
+                    watchlist_name=watchlist.name,
+                    source=IngestionJob.Source.DATA_FRESHNESS,
+                    asset_class="CRYPTO",
+                    crypto_timeframe=timeframe,
+                    stock_timeframe=timeframe,
+                    max_symbols=max_symbols,
+                    throttle_seconds=throttle_seconds,
+                )
+                messages.success(
+                    request,
+                    f"Queued crypto ingest job #{job.id} (max_symbols={max_symbols}, throttle={throttle_seconds}s).",
+                )
+            except Exception as exc:  # noqa: BLE001
+                messages.error(request, f"Unable to queue targeted crypto ingest: {exc}")
+            return redirect(f"{request.path}?{urlencode({'timeframe': timeframe})}")
+    cache_key = f"freshness:{request.user.pk}:{watchlist.pk if watchlist else 0}:{timeframe}"
+    summary = cache.get(cache_key)
+    if summary is None:
+        summary = build_data_freshness_summary(watchlist=watchlist, timeframe=timeframe, top_n=40)
+        cache.set(cache_key, summary, 90)
+    recent_jobs = list(IngestionJob.objects.filter(user=request.user).order_by("-created_at")[:8])
+    pending_jobs_count = IngestionJob.objects.filter(user=request.user, status=IngestionJob.Status.PENDING).count()
+    return render(
+        request,
+        "dashboard/data_freshness.html",
+        {
+            "summary": summary,
+            "timeframe": timeframe,
+            "timeframe_choices": ["1d", "5m", "1m"],
+            "recent_jobs": recent_jobs,
+            "pending_jobs_count": pending_jobs_count,
+        },
+    )

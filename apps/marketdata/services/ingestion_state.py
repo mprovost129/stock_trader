@@ -43,6 +43,23 @@ def get_unsupported_crypto_reason(symbol: str) -> str | None:
         return None
 
 
+def clear_unsupported_crypto_symbols(symbols: list[str] | tuple[str, ...] | set[str] | None = None) -> int:
+    """Remove persisted unsupported-crypto flags.
+
+    If symbols are provided, clears only those symbol keys. Otherwise clears all.
+    Returns number of deleted rows.
+    """
+    if symbols:
+        normalized = [str(sym).strip().upper() for sym in symbols if str(sym).strip()]
+        if not normalized:
+            return 0
+        keys = [f"{_UNSUPPORTED_PREFIX}{sym}" for sym in normalized]
+        deleted, _ = IngestionState.objects.filter(key__in=keys).delete()
+        return int(deleted)
+    deleted, _ = IngestionState.objects.filter(key__startswith=_UNSUPPORTED_PREFIX).delete()
+    return int(deleted)
+
+
 # ---------------------------------------------------------------------------
 # Provider cooldowns
 # ---------------------------------------------------------------------------
@@ -76,3 +93,31 @@ def active_provider_cooldown_reason(symbol: str, provider_name: str | None) -> s
         row.delete()
         return None
     return str(row.reason or "provider_cooldown")
+
+
+def clear_provider_cooldowns(symbols: list[str] | tuple[str, ...] | set[str] | None = None) -> int:
+    """Remove persisted provider-cooldown flags.
+
+    If symbols are provided, clears only those symbol cooldown keys across providers.
+    Otherwise clears all cooldown keys.
+    Returns number of deleted rows.
+    """
+    if symbols:
+        normalized = [str(sym).strip().upper() for sym in symbols if str(sym).strip()]
+        if not normalized:
+            return 0
+        deleted, _ = IngestionState.objects.filter(
+            key__startswith=_COOLDOWN_PREFIX,
+            key__in=[
+                f"{_COOLDOWN_PREFIX}{sym}:auto" for sym in normalized
+            ] + [
+                f"{_COOLDOWN_PREFIX}{sym}:coinbase" for sym in normalized
+            ] + [
+                f"{_COOLDOWN_PREFIX}{sym}:kraken" for sym in normalized
+            ] + [
+                f"{_COOLDOWN_PREFIX}{sym}:binance" for sym in normalized
+            ],
+        ).delete()
+        return int(deleted)
+    deleted, _ = IngestionState.objects.filter(key__startswith=_COOLDOWN_PREFIX).delete()
+    return int(deleted)

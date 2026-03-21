@@ -10,6 +10,7 @@
     </div>
     <div class="d-flex gap-2">
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}">Signals</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:data_freshness' %}">Freshness</a>
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}?status=OPEN">Holdings</a>
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:risk_settings' %}">Risk Settings</a>
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:analytics' %}">Analytics</a>

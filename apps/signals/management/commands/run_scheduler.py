@@ -52,6 +52,8 @@ class Command(BaseCommand):
         parser.add_argument("--position-sync-every", type=int, default=int(getattr(settings, "SCHEDULER_POSITION_SYNC_EVERY", 1) or 1), help="Run paper-trade lifecycle sync every N cycles (1 = every cycle).")
         parser.add_argument("--held-position-check-every", type=int, default=int(getattr(settings, "SCHEDULER_HELD_POSITION_CHECK_EVERY", 1) or 1), help="Run held-position health checks every N cycles (1 = every cycle).")
         parser.add_argument("--portfolio-snapshot-every", type=int, default=int(getattr(settings, "SCHEDULER_PORTFOLIO_SNAPSHOT_EVERY", 4) or 4), help="Save a portfolio health snapshot and check for deterioration every N cycles (0 = disabled).")
+        parser.add_argument("--ingestion-queue-every", type=int, default=1, help="Process pending ingestion queue jobs every N cycles (1 = every cycle).")
+        parser.add_argument("--ingestion-queue-max-jobs", type=int, default=int(getattr(settings, "INGESTION_QUEUE_MAX_JOBS_PER_CYCLE", 1) or 1), help="Maximum queued ingestion jobs to process each queue pass.")
 
     def handle(self, *args, **options):
         username = (options.get("username") or "").strip()
@@ -80,6 +82,8 @@ class Command(BaseCommand):
         position_sync_every = max(1, int(options.get("position_sync_every") or 1))
         held_position_check_every = max(1, int(options.get("held_position_check_every") or 1))
         portfolio_snapshot_every = max(0, int(options.get("portfolio_snapshot_every") or 0))
+        ingestion_queue_every = max(1, int(options.get("ingestion_queue_every") or 1))
+        ingestion_queue_max_jobs = max(1, int(options.get("ingestion_queue_max_jobs") or 1))
 
         _assert_schema_ready()
 
@@ -124,6 +128,10 @@ class Command(BaseCommand):
             self.stdout.write("Checking portfolio health for deterioration...")
             call_command("check_portfolio_health_deterioration", username=username, dry_run=dry_run)
 
+        def _run_ingestion_queue() -> None:
+            self.stdout.write("Processing ingestion queue...")
+            call_command("process_ingestion_queue", max_jobs=ingestion_queue_max_jobs)
+
         iteration = 0
         while True:
             iteration += 1
@@ -142,6 +150,8 @@ class Command(BaseCommand):
                 )
                 if iteration > 1 and (iteration - 1) % healthcheck_every == 0:
                     _run_health_check()
+                if iteration % ingestion_queue_every == 0:
+                    _run_ingestion_queue()
 
                 call_command(
                     "run_operator_cycle",

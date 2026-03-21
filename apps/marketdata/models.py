@@ -1,4 +1,6 @@
 from django.db import models
+from django.conf import settings
+from django.utils import timezone
 
 
 class Instrument(models.Model):
@@ -71,3 +73,52 @@ class IngestionState(models.Model):
 
     def __str__(self) -> str:
         return self.key
+
+
+class IngestionJob(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        RUNNING = "RUNNING", "Running"
+        SUCCEEDED = "SUCCEEDED", "Succeeded"
+        FAILED = "FAILED", "Failed"
+
+    class Source(models.TextChoices):
+        DATA_FRESHNESS = "DATA_FRESHNESS", "Data freshness"
+        OPERATOR = "OPERATOR", "Operator"
+        MANUAL = "MANUAL", "Manual"
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="ingestion_jobs")
+    watchlist_name = models.CharField(max_length=100, default="Default")
+    source = models.CharField(max_length=24, choices=Source.choices, default=Source.MANUAL)
+
+    asset_class = models.CharField(max_length=16, blank=True, default="")
+    stock_timeframe = models.CharField(max_length=4, default="1d")
+    crypto_timeframe = models.CharField(max_length=4, default="1d")
+    stock_provider = models.CharField(max_length=32, blank=True, default="")
+    crypto_provider = models.CharField(max_length=32, blank=True, default="")
+    symbols_csv = models.TextField(blank=True, default="")
+    limit = models.PositiveIntegerField(default=300)
+    max_symbols = models.PositiveIntegerField(default=8)
+    throttle_seconds = models.FloatField(default=1.0)
+
+    run_after = models.DateTimeField(default=timezone.now)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    attempt_count = models.PositiveIntegerField(default=0)
+    max_attempts = models.PositiveIntegerField(default=1)
+
+    last_error = models.TextField(blank=True, default="")
+    result_summary = models.JSONField(default=dict, blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["status", "run_after"], name="idx_ingestjob_status_runafter"),
+            models.Index(fields=["user", "-created_at"], name="idx_ingestjob_user_recent"),
+        ]
+        ordering = ("-created_at", "-id")
+
+    def __str__(self) -> str:
+        return f"{self.user} {self.asset_class or 'ALL'} {self.status} {self.created_at:%Y-%m-%d %H:%M}"
