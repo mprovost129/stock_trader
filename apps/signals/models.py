@@ -99,6 +99,7 @@ class AlertDelivery(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=["channel", "status", "-created_at"], name="idx_alert_chan_stat_ct"),
+            models.Index(fields=["status", "-created_at"], name="idx_alert_status_ct"),
         ]
 
     def __str__(self) -> str:
