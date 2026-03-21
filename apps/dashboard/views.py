@@ -395,6 +395,43 @@ def home(request):
     )
     pending_outcome_count = user_signals.filter(status=Signal.Status.NEW).exclude(outcome__status=SignalOutcome.Status.EVALUATED).count()
 
+    fast_mode = bool(getattr(settings, "DASHBOARD_HOME_FAST_MODE", False))
+    if fast_mode:
+        context = {
+            "signals": signals,
+            "watchlist": watchlist,
+            "watchlist_count": watchlist_count,
+            "watchlist_priority_counts": watchlist_priority_counts,
+            "watchlist_sector_board": watchlist_sector_board,
+            "data_ready_count": data_ready_count,
+            "signal_counts": signal_counts,
+            "ingestion_backlog_count": ingestion_backlog_count,
+            "journal_counts": journal_counts,
+            "active_configs": active_configs,
+            "latest_alerts": latest_alerts,
+            "recent_failed_alerts": recent_failed_alerts,
+            "setup_items": {
+                "watchlist_ready": watchlist_count > 0,
+                "strategy_ready": active_configs > 0,
+                "signals_ready": signal_counts["total"] > 0,
+                "journal_ready": journal_counts["total"] > 0,
+            },
+            "top_opportunities": top_opportunities,
+            "review_queue": review_queue,
+            "recent_outcomes": recent_outcomes,
+            "pending_outcome_count": pending_outcome_count,
+        }
+        total_ms = int((perf_counter() - started) * 1000)
+        slow_ms = int(getattr(settings, "DASHBOARD_HOME_SLOW_MS", 2000) or 2000)
+        if bool(getattr(settings, "DASHBOARD_HOME_TRACE", False)) or total_ms >= slow_ms:
+            logger.info(
+                "dashboard.home timing user=%s mode=fast total_ms=%s sections=%s",
+                request.user.username,
+                total_ms,
+                ",".join(f"{k}:{v}" for k, v in sorted(timings_ms.items(), key=lambda item: item[1], reverse=True)),
+            )
+        return render(request, "dashboard/home_fast.html", context)
+
     open_positions = list(
         PaperTrade.objects.select_related("signal", "signal__instrument")
         .filter(status=PaperTrade.Status.OPEN)

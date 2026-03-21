@@ -231,6 +231,7 @@ PORTFOLIO_HEALTH_ALERT_COOLDOWN_MINUTES = int(os.getenv("PORTFOLIO_HEALTH_ALERT_
 # --- Dashboard performance diagnostics ---
 DASHBOARD_HOME_SLOW_MS = int(os.getenv("DASHBOARD_HOME_SLOW_MS", "2000"))
 DASHBOARD_HOME_TRACE = _env_bool("DASHBOARD_HOME_TRACE", False)
+DASHBOARD_HOME_FAST_MODE = _env_bool("DASHBOARD_HOME_FAST_MODE", False)
 
 
 # --- Logging ---
