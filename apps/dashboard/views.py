@@ -1,4 +1,6 @@
 from collections import defaultdict
+import logging
+from time import perf_counter
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
@@ -22,6 +24,9 @@ from apps.signals.views import _extract_signal_filter_params
 from apps.portfolios.views import _extract_holding_filter_params
 
 
+
+
+logger = logging.getLogger("apps.dashboard")
 
 
 def _normalize_score(score):
@@ -75,6 +80,7 @@ def _build_trade_analytics(*, user, timeframe: str = "", strategy: str = "", min
     )
     evaluated_outcomes_qs = SignalOutcome.objects.select_related("signal", "signal__strategy").filter(
         status=SignalOutcome.Status.EVALUATED,
+        signal__created_by=user,
     )
 
     if timeframe:
@@ -193,6 +199,11 @@ def _build_trade_analytics(*, user, timeframe: str = "", strategy: str = "", min
 
 def _build_signal_preset_widgets(user):
     widgets = []
+    held_ids = list(
+        HeldPosition.objects.filter(user=user, status=HeldPosition.Status.OPEN)
+        .values_list("instrument_id", flat=True)
+        .distinct()
+    )
     presets = SavedFilterPreset.objects.filter(
         user=user,
         scope=SavedFilterPreset.Scope.SIGNALS,
@@ -200,7 +211,7 @@ def _build_signal_preset_widgets(user):
     ).order_by("name")
     for preset in presets:
         filters = _extract_signal_filter_params(preset.filters or {})
-        qs = Signal.objects.filter().exclude(direction=Signal.Direction.FLAT)
+        qs = Signal.objects.filter(created_by=user).exclude(direction=Signal.Direction.FLAT)
         status = filters.get("status")
         if status:
             qs = qs.filter(status=status)
@@ -217,7 +228,6 @@ def _build_signal_preset_widgets(user):
         if timeframe:
             qs = qs.filter(timeframe=timeframe)
         ownership_state = filters.get("ownership_state")
-        held_ids = list(HeldPosition.objects.filter(user=user, status=HeldPosition.Status.OPEN).values_list("instrument_id", flat=True).distinct())
         if ownership_state == "HELD_OPEN":
             qs = qs.filter(instrument_id__in=held_ids)
         elif ownership_state == "NOT_HELD":
@@ -278,17 +288,28 @@ def _build_holding_preset_widgets(user):
 
 @login_required
 def home(request):
+    started = perf_counter()
+    timings_ms: dict[str, int] = {}
+
+    def _mark(name: str, t0: float) -> None:
+        timings_ms[name] = int((perf_counter() - t0) * 1000)
+
+    t0 = perf_counter()
+    user_signals = Signal.objects.filter(created_by=request.user)
     signals = (
-        Signal.objects.select_related("instrument", "strategy")
+        user_signals.select_related("instrument", "strategy")
         .order_by("-generated_at")
         .all()[:25]
     )
     top_opportunities = list(
-        Signal.objects.select_related("instrument", "strategy")
+        user_signals.select_related("instrument", "strategy")
         .exclude(direction=Signal.Direction.FLAT)
         .filter(status__in=[Signal.Status.NEW, Signal.Status.REVIEWED, Signal.Status.TAKEN])
         .order_by("-score", "-generated_at")[:8]
     )
+    _mark("signals", t0)
+
+    t0 = perf_counter()
     watchlist = ensure_active_watchlist(request.user)
     watchlist_count = 0
     data_ready_count = 0
@@ -306,8 +327,10 @@ def home(request):
         data_ready_count = PriceBar.objects.filter(instrument_id__in=instrument_ids, timeframe="1d").values("instrument_id").distinct().count()
         watchlist_sector_board = summarize_watchlist_sectors(watchlist=watchlist, user=request.user, limit=5)
     ingestion_backlog_count = max(watchlist_count - data_ready_count, 0)
+    _mark("watchlist", t0)
 
-    signal_counts = Signal.objects.aggregate(
+    t0 = perf_counter()
+    signal_counts = user_signals.aggregate(
         total=Count("id"),
         new=Count("id", filter=Q(status=Signal.Status.NEW)),
         confirmed=Count("id", filter=Q(status=Signal.Status.CONFIRMED)),
@@ -360,16 +383,17 @@ def home(request):
     }
     recent_outcomes = list(
         SignalOutcome.objects.select_related("signal", "signal__instrument")
+        .filter(signal__created_by=request.user)
         .exclude(status=SignalOutcome.Status.PENDING)
         .order_by("-updated_at")[:5]
     )
     review_queue = list(
-        Signal.objects.select_related("instrument", "strategy")
+        user_signals.select_related("instrument", "strategy")
         .filter(status=Signal.Status.NEW)
         .exclude(direction=Signal.Direction.FLAT)
         .order_by("-score", "-generated_at")[:10]
     )
-    pending_outcome_count = Signal.objects.filter(status=Signal.Status.NEW).exclude(outcome__status=SignalOutcome.Status.EVALUATED).count()
+    pending_outcome_count = user_signals.filter(status=Signal.Status.NEW).exclude(outcome__status=SignalOutcome.Status.EVALUATED).count()
 
     open_positions = list(
         PaperTrade.objects.select_related("signal", "signal__instrument")
@@ -388,7 +412,9 @@ def home(request):
         wins=Count("id", filter=Q(status=PaperTrade.Status.CLOSED, pnl_amount__gt=0)),
         losses=Count("id", filter=Q(status=PaperTrade.Status.CLOSED, pnl_amount__lt=0)),
     )
+    _mark("counts_and_recent", t0)
 
+    t0 = perf_counter()
     alert_policy = {
         "event_threshold": float(getattr(settings, "ALERT_MIN_SCORE_EVENT", 80) or 80),
         "state_threshold": float(getattr(settings, "ALERT_MIN_SCORE_STATE", 60) or 60),
@@ -406,6 +432,9 @@ def home(request):
     next_session_queue = build_next_session_queue(username=request.user.username, limit=10)
     high_risk_positions = rank_open_positions(username=request.user.username, limit=5)
     trade_lifecycle = get_trade_lifecycle_summary()
+    _mark("alert_and_queue_previews", t0)
+
+    t0 = perf_counter()
     uid = request.user.pk
     _cache_ttl = 60  # seconds — scheduler runs every 5 min; 60s keeps UI snappy without staleness
 
@@ -435,6 +464,9 @@ def home(request):
     evidence_lifecycle_automation = _cached(f"dash:evidence_lifecycle_automation:{uid}", lambda: summarize_evidence_lifecycle_automation(user=request.user))
     portfolio_health = _cached(f"dash:portfolio_health:{uid}", lambda: summarize_portfolio_health_score(user=request.user))
     portfolio_health_history = _cached(f"dash:portfolio_health_history:{uid}", lambda: summarize_portfolio_health_history(user=request.user, limit=6))
+    _mark("cached_summaries", t0)
+
+    t0 = perf_counter()
     risk_profile = UserRiskProfile.objects.filter(user=request.user).first()
     correlation_context = build_signal_correlation_context(user=request.user, risk_profile=risk_profile)
     top_opportunity_guardrails = {}
@@ -458,6 +490,7 @@ def home(request):
     signal_preset_widgets = _build_signal_preset_widgets(request.user)
     holding_preset_widgets = _build_holding_preset_widgets(request.user)
     analytics_summary = _build_trade_analytics(user=request.user)["summary"]
+    _mark("guardrails_widgets_analytics", t0)
 
     setup_items = {
         "watchlist_ready": watchlist_count > 0,
@@ -523,6 +556,15 @@ def home(request):
         "top_opportunity_guardrail_summary": top_opportunity_guardrail_summary,
         "analytics_summary": analytics_summary,
     }
+    total_ms = int((perf_counter() - started) * 1000)
+    slow_ms = int(getattr(settings, "DASHBOARD_HOME_SLOW_MS", 2000) or 2000)
+    if bool(getattr(settings, "DASHBOARD_HOME_TRACE", False)) or total_ms >= slow_ms:
+        logger.info(
+            "dashboard.home timing user=%s total_ms=%s sections=%s",
+            request.user.username,
+            total_ms,
+            ",".join(f"{k}:{v}" for k, v in sorted(timings_ms.items(), key=lambda item: item[1], reverse=True)),
+        )
     return render(request, "dashboard/home.html", context)
 
 @login_required
@@ -536,8 +578,12 @@ def analytics(request):
         min_count = 1
 
     analytics_data = _build_trade_analytics(user=request.user, timeframe=timeframe, strategy=strategy, min_count=min_count)
-    timeframe_choices = list(Signal.objects.order_by().values_list("timeframe", flat=True).distinct())
-    strategy_choices = list(Signal.objects.order_by().values_list("strategy__slug", flat=True).distinct())
+    timeframe_choices = list(
+        Signal.objects.filter(created_by=request.user).order_by().values_list("timeframe", flat=True).distinct()
+    )
+    strategy_choices = list(
+        Signal.objects.filter(created_by=request.user).order_by().values_list("strategy__slug", flat=True).distinct()
+    )
     return render(request, "dashboard/analytics.html", {
         "analytics": analytics_data,
         "timeframe": timeframe,
@@ -546,4 +592,3 @@ def analytics(request):
         "timeframe_choices": timeframe_choices,
         "strategy_choices": strategy_choices,
     })
-
