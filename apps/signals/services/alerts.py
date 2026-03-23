@@ -114,6 +114,10 @@ def get_alert_candidates(*, username: str | None = None):
         .exclude(direction=Signal.Direction.FLAT)
         .order_by("generated_at", "id")
     )
+    max_age_minutes = int(getattr(settings, "ALERT_MAX_SIGNAL_AGE_MINUTES", 4320) or 4320)
+    if max_age_minutes > 0:
+        cutoff = timezone.now() - timedelta(minutes=max_age_minutes)
+        qs = qs.filter(generated_at__gte=cutoff)
     if username:
         qs = qs.filter(created_by__username=username)
     return qs
