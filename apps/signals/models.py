@@ -111,6 +111,7 @@ class OperatorNotification(models.Model):
     class Kind(models.TextChoices):
         DELIVERY_HEALTH = "DELIVERY_HEALTH", "Delivery health"
         DELIVERY_RECOVERY = "DELIVERY_RECOVERY", "Delivery recovery"
+        DAILY_ALERT_DIGEST = "DAILY_ALERT_DIGEST", "Daily alert digest"
         PORTFOLIO_HEALTH = "PORTFOLIO_HEALTH", "Portfolio health"
         SCHEDULER_FAILURE = "SCHEDULER_FAILURE", "Scheduler failure"
 

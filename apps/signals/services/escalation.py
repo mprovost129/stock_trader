@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, time as dt_time, timedelta
 
 from django.conf import settings
 from django.core.mail import send_mail
 from django.utils import timezone
 
 from apps.portfolios.models import PortfolioHealthSnapshot
-from apps.signals.models import OperatorNotification
+from apps.signals.models import AlertDelivery, OperatorNotification, Signal
 from apps.signals.services.alerts import _get_email_recipients, _post_discord, get_enabled_delivery_channels
 from apps.signals.services.delivery_health import get_delivery_health_summary
 
@@ -73,7 +74,6 @@ def check_and_send_delivery_recovery_notification(*, dry_run: bool = False) -> E
 
 
 def check_and_send_portfolio_health_notification(*, user, dry_run: bool = False) -> EscalationRunSummary:
-    """Compare the two most recent portfolio health snapshots and notify if score deteriorated."""
     snapshots = list(
         PortfolioHealthSnapshot.objects.filter(user=user).order_by("-created_at")[:2]
     )
@@ -112,7 +112,7 @@ def check_and_send_portfolio_health_notification(*, user, dry_run: bool = False)
 
     reason_parts: list[str] = []
     if score_drop >= threshold:
-        reason_parts.append(f"score dropped {score_drop} points ({previous.overall_score} → {latest.overall_score})")
+        reason_parts.append(f"score dropped {score_drop} points ({previous.overall_score} -> {latest.overall_score})")
     if grade_deteriorated:
         reason_parts.append(f"grade moved to {latest.overall_grade_label or latest.overall_grade_code}")
 
@@ -128,7 +128,6 @@ def check_and_send_portfolio_health_notification(*, user, dry_run: bool = False)
 
 
 def notify_scheduler_failure(*, iteration: int, error: str, dry_run: bool = False) -> EscalationRunSummary:
-    """Send a Discord/email notification when a scheduler cycle raises an unhandled exception."""
     headline = f"Trading Advisor: scheduler cycle {iteration} failed"
     body = f"Cycle {iteration} raised an exception and was skipped.\n\nError:\n{error[:1800]}"
     results = _deliver_operator_notification(
@@ -138,6 +137,87 @@ def notify_scheduler_failure(*, iteration: int, error: str, dry_run: bool = Fals
         dry_run=dry_run,
     )
     return EscalationRunSummary(triggered=True, reason="scheduler_error", headline=headline, results=results)
+
+
+def check_and_send_daily_alert_digest(*, username: str | None = None, dry_run: bool = False, now=None) -> EscalationRunSummary:
+    now = now or timezone.now()
+    local_now = timezone.localtime(now)
+    if local_now.weekday() >= 5:
+        return EscalationRunSummary(
+            triggered=False,
+            reason="weekend",
+            headline="Daily close digest skipped on weekend",
+            results=[],
+        )
+
+    close_time = _parse_hhmm(getattr(settings, "EQUITY_ALERT_SESSION_END", "16:00"))
+    if local_now.timetz().replace(tzinfo=None) < close_time:
+        return EscalationRunSummary(
+            triggered=False,
+            reason="before_close",
+            headline="Daily close digest waits for market close",
+            results=[],
+        )
+
+    day_start_local = datetime.combine(local_now.date(), dt_time.min, tzinfo=local_now.tzinfo)
+    day_end_local = day_start_local + timedelta(days=1)
+    day_start_utc = day_start_local.astimezone(timezone.UTC)
+    day_end_utc = day_end_local.astimezone(timezone.UTC)
+
+    digest_scope = (username or "all users").strip()
+    digest_key = f"{local_now.date().isoformat()}|{digest_scope}"
+    if _already_sent_daily_digest(digest_key=digest_key):
+        return EscalationRunSummary(
+            triggered=False,
+            reason="already_sent_today",
+            headline=f"Daily close digest already sent for {local_now.date().isoformat()} ({digest_scope})",
+            results=[],
+        )
+
+    base_qs = AlertDelivery.objects.filter(created_at__gte=day_start_utc, created_at__lt=day_end_utc).select_related("signal", "signal__instrument")
+    if username:
+        base_qs = base_qs.filter(signal__created_by__username=username)
+
+    total = base_qs.count()
+    status_counts = Counter(base_qs.values_list("status", flat=True))
+    reason_counts = Counter(base_qs.values_list("reason", flat=True))
+    sent_qs = base_qs.filter(status=AlertDelivery.Status.SENT).order_by("-signal__score", "-created_at")[:5]
+    sent_examples = [
+        f"{item.signal.instrument.symbol} {item.signal.direction} {item.signal.timeframe} score={float(item.signal.score or 0):.2f}/100"
+        for item in sent_qs
+    ]
+    skipped_reasons = Counter(
+        base_qs.filter(status=AlertDelivery.Status.SKIPPED).values_list("reason", flat=True)
+    )
+    failed_reasons = Counter(
+        base_qs.filter(status=AlertDelivery.Status.FAILED).values_list("reason", flat=True)
+    )
+
+    signal_qs = Signal.objects.filter(created_at__gte=day_start_utc, created_at__lt=day_end_utc)
+    if username:
+        signal_qs = signal_qs.filter(created_by__username=username)
+    new_signal_count = signal_qs.count()
+
+    headline = f"Trading Advisor close digest: {local_now.date().isoformat()} ({digest_scope})"
+    body = _build_daily_digest_body(
+        username=username,
+        local_now=local_now,
+        total=total,
+        status_counts=status_counts,
+        reason_counts=reason_counts,
+        skipped_reasons=skipped_reasons,
+        failed_reasons=failed_reasons,
+        sent_examples=sent_examples,
+        new_signal_count=new_signal_count,
+    )
+    results = _deliver_operator_notification(
+        kind=OperatorNotification.Kind.DAILY_ALERT_DIGEST,
+        headline=headline,
+        body=body,
+        dry_run=dry_run,
+        digest_key=digest_key,
+    )
+    return EscalationRunSummary(triggered=True, reason="triggered", headline=headline, results=results)
 
 
 def _collect_problems(summary) -> list[str]:
@@ -227,6 +307,66 @@ def _build_portfolio_health_body(*, latest, previous, reason_parts: list[str]) -
     return "\n".join(lines)
 
 
+def _build_daily_digest_body(
+    *,
+    username: str | None,
+    local_now,
+    total: int,
+    status_counts: Counter,
+    reason_counts: Counter,
+    skipped_reasons: Counter,
+    failed_reasons: Counter,
+    sent_examples: list[str],
+    new_signal_count: int,
+) -> str:
+    scope = username or "all users"
+    lines = [
+        "End-of-day alert delivery digest.",
+        "",
+        f"Scope: {scope}",
+        f"Date: {local_now.date().isoformat()} ({local_now.tzname()})",
+        f"Signals generated today: {new_signal_count}",
+        f"Alert delivery attempts today: {total}",
+        f"- SENT: {status_counts.get('SENT', 0)}",
+        f"- SKIPPED: {status_counts.get('SKIPPED', 0)}",
+        f"- FAILED: {status_counts.get('FAILED', 0)}",
+        f"- DRY_RUN: {status_counts.get('DRY_RUN', 0)}",
+        "",
+        "Why alerts came through:",
+        "- SENT alerts passed all policy gates (qty, freshness, score threshold, session window, cooldown, and daily cap).",
+    ]
+    if sent_examples:
+        lines.append(f"- Top sent examples: {'; '.join(sent_examples)}")
+    else:
+        lines.append("- No alerts were sent today.")
+
+    lines.append("")
+    lines.append("Why alerts were skipped:")
+    if skipped_reasons:
+        for reason, count in skipped_reasons.most_common(8):
+            lines.append(f"- {reason}: {count}")
+    else:
+        lines.append("- No skipped alerts today.")
+
+    if failed_reasons:
+        lines.append("")
+        lines.append("Delivery failures:")
+        for reason, count in failed_reasons.most_common(5):
+            lines.append(f"- {reason}: {count}")
+
+    if reason_counts:
+        lines.append("")
+        lines.append("Top overall reasons:")
+        for reason, count in reason_counts.most_common(6):
+            lines.append(f"- {reason}: {count}")
+
+    lines.append("")
+    lines.append("Manual check:")
+    lines.append("- python manage.py preview_alert_queue --username <your_username>")
+    lines.append("- python manage.py system_health --username <your_username>")
+    return "\n".join(lines)
+
+
 def _cooldown_active(*, kind: str, cooldown_minutes: int) -> bool:
     if cooldown_minutes <= 0:
         return False
@@ -262,15 +402,26 @@ def _has_open_delivery_health_incident() -> bool:
     return last_escalation.created_at > last_recovery.created_at
 
 
-def _deliver_operator_notification(*, kind: str, headline: str, body: str, dry_run: bool) -> list[EscalationResult]:
+def _already_sent_daily_digest(*, digest_key: str) -> bool:
+    if not digest_key:
+        return False
+    return OperatorNotification.objects.filter(
+        kind=OperatorNotification.Kind.DAILY_ALERT_DIGEST,
+        status=OperatorNotification.Status.SENT,
+        reason=digest_key,
+    ).exists()
+
+
+def _deliver_operator_notification(*, kind: str, headline: str, body: str, dry_run: bool, digest_key: str = "") -> list[EscalationResult]:
     enabled_channels = get_enabled_delivery_channels()
     results: list[EscalationResult] = []
+    reason_key = digest_key or ""
     if not enabled_channels:
         _create_notification(
             kind=kind,
             channel=OperatorNotification.Channel.EMAIL,
             status=OperatorNotification.Status.SKIPPED,
-            reason="no_enabled_channels",
+            reason=reason_key or "no_enabled_channels",
             headline=headline,
             body=body,
             payload_snapshot={},
@@ -279,21 +430,24 @@ def _deliver_operator_notification(*, kind: str, headline: str, body: str, dry_r
         return [EscalationResult(channel="NONE", status=OperatorNotification.Status.SKIPPED, reason="no_enabled_channels")]
 
     if OperatorNotification.Channel.DISCORD in enabled_channels:
-        results.append(_send_discord_notification(kind=kind, headline=headline, body=body, dry_run=dry_run))
+        results.append(_send_discord_notification(kind=kind, headline=headline, body=body, dry_run=dry_run, digest_key=reason_key))
     if OperatorNotification.Channel.EMAIL in enabled_channels:
-        results.append(_send_email_notification(kind=kind, headline=headline, body=body, dry_run=dry_run))
+        results.append(_send_email_notification(kind=kind, headline=headline, body=body, dry_run=dry_run, digest_key=reason_key))
     return results
 
 
-def _send_discord_notification(*, kind: str, headline: str, body: str, dry_run: bool) -> EscalationResult:
+def _send_discord_notification(*, kind: str, headline: str, body: str, dry_run: bool, digest_key: str = "") -> EscalationResult:
     if kind == OperatorNotification.Kind.PORTFOLIO_HEALTH:
-        content = "📉 Trading Advisor: portfolio health alert"
+        content = "Trading Advisor: portfolio health alert"
         color = 0xE74C3C
     elif kind == OperatorNotification.Kind.DELIVERY_HEALTH:
-        content = "🚨 Trading Advisor operator escalation"
+        content = "Trading Advisor operator escalation"
         color = 0xE67E22
+    elif kind == OperatorNotification.Kind.DAILY_ALERT_DIGEST:
+        content = "Trading Advisor close digest"
+        color = 0x3498DB
     else:
-        content = "✅ Trading Advisor operator recovery"
+        content = "Trading Advisor operator recovery"
         color = 0x2ECC71
     payload = {
         "content": content,
@@ -302,27 +456,27 @@ def _send_discord_notification(*, kind: str, headline: str, body: str, dry_run: 
                 "title": headline,
                 "description": body[:4096],
                 "color": color,
-                "footer": {"text": "Trading Advisor — unattended operator notice"},
+                "footer": {"text": "Trading Advisor - unattended operator notice"},
             }
         ],
     }
     if dry_run:
-        _create_notification(kind=kind, channel=OperatorNotification.Channel.DISCORD, status=OperatorNotification.Status.DRY_RUN, reason="dry_run", headline=headline, body=body, payload_snapshot=payload)
+        _create_notification(kind=kind, channel=OperatorNotification.Channel.DISCORD, status=OperatorNotification.Status.DRY_RUN, reason=digest_key or "dry_run", headline=headline, body=body, payload_snapshot=payload)
         return EscalationResult(channel=OperatorNotification.Channel.DISCORD, status=OperatorNotification.Status.DRY_RUN, reason="dry_run")
     webhook_url = getattr(settings, "DISCORD_WEBHOOK_URL", "").strip()
     if not webhook_url:
-        _create_notification(kind=kind, channel=OperatorNotification.Channel.DISCORD, status=OperatorNotification.Status.FAILED, reason="missing_webhook", headline=headline, body=body, payload_snapshot=payload, error_message="DISCORD_WEBHOOK_URL is not configured.")
+        _create_notification(kind=kind, channel=OperatorNotification.Channel.DISCORD, status=OperatorNotification.Status.FAILED, reason=digest_key or "missing_webhook", headline=headline, body=body, payload_snapshot=payload, error_message="DISCORD_WEBHOOK_URL is not configured.")
         return EscalationResult(channel=OperatorNotification.Channel.DISCORD, status=OperatorNotification.Status.FAILED, reason="missing_webhook")
     try:
         _post_discord(webhook_url=webhook_url, payload=payload)
-        _create_notification(kind=kind, channel=OperatorNotification.Channel.DISCORD, status=OperatorNotification.Status.SENT, reason="sent", headline=headline, body=body, payload_snapshot=payload, delivered_at=timezone.now())
+        _create_notification(kind=kind, channel=OperatorNotification.Channel.DISCORD, status=OperatorNotification.Status.SENT, reason=digest_key or "sent", headline=headline, body=body, payload_snapshot=payload, delivered_at=timezone.now())
         return EscalationResult(channel=OperatorNotification.Channel.DISCORD, status=OperatorNotification.Status.SENT, reason="sent")
     except Exception as exc:  # noqa: BLE001
-        _create_notification(kind=kind, channel=OperatorNotification.Channel.DISCORD, status=OperatorNotification.Status.FAILED, reason="exception", headline=headline, body=body, payload_snapshot=payload, error_message=str(exc))
+        _create_notification(kind=kind, channel=OperatorNotification.Channel.DISCORD, status=OperatorNotification.Status.FAILED, reason=digest_key or "exception", headline=headline, body=body, payload_snapshot=payload, error_message=str(exc))
         return EscalationResult(channel=OperatorNotification.Channel.DISCORD, status=OperatorNotification.Status.FAILED, reason="exception")
 
 
-def _send_email_notification(*, kind: str, headline: str, body: str, dry_run: bool) -> EscalationResult:
+def _send_email_notification(*, kind: str, headline: str, body: str, dry_run: bool, digest_key: str = "") -> EscalationResult:
     recipients = _get_email_recipients()
     payload = {
         "subject": headline,
@@ -331,17 +485,17 @@ def _send_email_notification(*, kind: str, headline: str, body: str, dry_run: bo
         "from_email": getattr(settings, "DEFAULT_FROM_EMAIL", "webmaster@localhost"),
     }
     if dry_run:
-        _create_notification(kind=kind, channel=OperatorNotification.Channel.EMAIL, status=OperatorNotification.Status.DRY_RUN, reason="dry_run", headline=headline, body=body, payload_snapshot=payload)
+        _create_notification(kind=kind, channel=OperatorNotification.Channel.EMAIL, status=OperatorNotification.Status.DRY_RUN, reason=digest_key or "dry_run", headline=headline, body=body, payload_snapshot=payload)
         return EscalationResult(channel=OperatorNotification.Channel.EMAIL, status=OperatorNotification.Status.DRY_RUN, reason="dry_run")
     if not recipients:
-        _create_notification(kind=kind, channel=OperatorNotification.Channel.EMAIL, status=OperatorNotification.Status.FAILED, reason="missing_recipients", headline=headline, body=body, payload_snapshot=payload, error_message="ALERT_EMAIL_TO is not configured.")
+        _create_notification(kind=kind, channel=OperatorNotification.Channel.EMAIL, status=OperatorNotification.Status.FAILED, reason=digest_key or "missing_recipients", headline=headline, body=body, payload_snapshot=payload, error_message="ALERT_EMAIL_TO is not configured.")
         return EscalationResult(channel=OperatorNotification.Channel.EMAIL, status=OperatorNotification.Status.FAILED, reason="missing_recipients")
     try:
         send_mail(subject=headline, message=body, from_email=payload["from_email"], recipient_list=recipients, fail_silently=False)
-        _create_notification(kind=kind, channel=OperatorNotification.Channel.EMAIL, status=OperatorNotification.Status.SENT, reason="sent", headline=headline, body=body, payload_snapshot=payload, delivered_at=timezone.now())
+        _create_notification(kind=kind, channel=OperatorNotification.Channel.EMAIL, status=OperatorNotification.Status.SENT, reason=digest_key or "sent", headline=headline, body=body, payload_snapshot=payload, delivered_at=timezone.now())
         return EscalationResult(channel=OperatorNotification.Channel.EMAIL, status=OperatorNotification.Status.SENT, reason="sent")
     except Exception as exc:  # noqa: BLE001
-        _create_notification(kind=kind, channel=OperatorNotification.Channel.EMAIL, status=OperatorNotification.Status.FAILED, reason="exception", headline=headline, body=body, payload_snapshot=payload, error_message=str(exc))
+        _create_notification(kind=kind, channel=OperatorNotification.Channel.EMAIL, status=OperatorNotification.Status.FAILED, reason=digest_key or "exception", headline=headline, body=body, payload_snapshot=payload, error_message=str(exc))
         return EscalationResult(channel=OperatorNotification.Channel.EMAIL, status=OperatorNotification.Status.FAILED, reason="exception")
 
 
@@ -357,3 +511,8 @@ def _create_notification(*, kind: str, channel: str, status: str, reason: str, h
         payload_snapshot=payload_snapshot,
         error_message=error_message,
     )
+
+
+def _parse_hhmm(value: str) -> dt_time:
+    hour_str, minute_str = (value or "16:00").split(":", 1)
+    return dt_time(hour=int(hour_str), minute=int(minute_str))

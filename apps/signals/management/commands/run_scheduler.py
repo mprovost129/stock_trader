@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from datetime import time as dt_time
 
 from django.conf import settings
 from django.core.management import call_command
@@ -132,6 +133,10 @@ class Command(BaseCommand):
             self.stdout.write("Processing ingestion queue...")
             call_command("process_ingestion_queue", max_jobs=ingestion_queue_max_jobs)
 
+        def _run_daily_alert_digest() -> None:
+            self.stdout.write("Running daily close digest check...")
+            call_command("send_daily_alert_digest", username=username, dry_run=dry_run)
+
         iteration = 0
         while True:
             iteration += 1
@@ -179,6 +184,8 @@ class Command(BaseCommand):
                     _run_held_position_check()
                 if portfolio_snapshot_every > 0 and iteration % portfolio_snapshot_every == 0:
                     _run_portfolio_snapshot()
+                if _is_after_market_close(runtime.local_dt, getattr(settings, "EQUITY_ALERT_SESSION_END", "16:00")):
+                    _run_daily_alert_digest()
             except Exception as exc:  # noqa: BLE001
                 status = "error"
                 message = str(exc)
@@ -222,3 +229,15 @@ def _assert_schema_ready() -> None:
     targets = executor.loader.graph.leaf_nodes()
     if executor.migration_plan(targets):
         raise CommandError("Database schema is not up to date. Run: python manage.py migrate")
+
+
+def _is_after_market_close(local_dt, close_str: str) -> bool:
+    if local_dt.weekday() >= 5:
+        return False
+    close_t = _parse_hhmm(close_str)
+    return local_dt.timetz().replace(tzinfo=None) >= close_t
+
+
+def _parse_hhmm(value: str) -> dt_time:
+    hour_str, minute_str = (value or "16:00").split(":", 1)
+    return dt_time(hour=int(hour_str), minute=int(minute_str))
