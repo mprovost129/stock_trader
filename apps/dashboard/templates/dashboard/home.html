@@ -2,54 +2,282 @@
 {% load dashboard_extras %}
 
 {% block title %}Dashboard{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
 
 {% block content %}
+  {# ── Page header ──────────────────────────────────────────────── #}
   <div class="d-flex align-items-center justify-content-between mb-3">
     <div>
-      <h1 class="h3 mb-1">Operator Dashboard</h1>
-      <div class="text-muted small">Read-only decision support. Manual execution only.</div>
+      <h1 class="h3 mb-1">Dashboard</h1>
+      <div class="text-muted small">{{ watchlist.name }} · Read-only decision support. Manual execution only.</div>
     </div>
-    <div class="d-flex gap-2">
-      <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}?ownership_state=NOT_HELD&direction=LONG">Signals</a>
-      <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}?status=OPEN">Holdings</a>
+    <div class="d-flex gap-2 flex-wrap">
+      <a class="btn btn-sm btn-primary" href="{% url 'signals:list' %}?direction=LONG&min_score=80">
+        <i class="bi bi-lightning-charge me-1"></i>High-conviction longs
+      </a>
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}?review_queue=1">Review queue</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}?status=OPEN">Open holdings</a>
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'journal:list' %}">Journal</a>
     </div>
   </div>
 
+  {# ── Key metrics strip ─────────────────────────────────────────── #}
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-2">
+      <div class="card shadow-sm stat-card h-100">
+        <div class="card-body py-2 px-3">
+          <div class="text-muted small">Watchlist</div>
+          <div class="fs-4 fw-bold">{{ watchlist_count }}</div>
+          <div class="small text-muted">{{ data_ready_count }} w/ data · <a href="{% url 'portfolios:watchlist' %}?priority=HIGH">{{ watchlist_priority_counts.HIGH|default:0 }} high</a></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="card shadow-sm stat-card h-100">
+        <div class="card-body py-2 px-3">
+          <div class="text-muted small">Signals / NEW</div>
+          <div class="fs-4 fw-bold">{{ signal_counts.total|default:0 }} <span class="fs-6 text-muted fw-normal">/ {{ signal_counts.new|default:0 }}</span></div>
+          <div class="small text-muted"><a href="{% url 'signals:list' %}?direction=LONG&min_score=80">View high-conviction</a></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="card shadow-sm stat-card h-100">
+        <div class="card-body py-2 px-3">
+          <div class="text-muted small">Open holdings</div>
+          <div class="fs-4 fw-bold">{{ held_positions.total_open|default:0 }}</div>
+          <div class="small {% if held_positions.sell_now %}text-danger fw-semibold{% else %}text-muted{% endif %}">
+            {{ held_positions.sell_now|default:0 }} sell · {{ held_positions.review_now|default:0 }} review
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="card shadow-sm stat-card h-100">
+        <div class="card-body py-2 px-3">
+          <div class="text-muted small">Portfolio health</div>
+          <div class="fs-4 fw-bold">{{ portfolio_health.overall_score }}</div>
+          <div class="small text-muted">{{ portfolio_health.overall_grade_label }} · <a href="{% url 'portfolios:portfolio_health_score' %}">{{ portfolio_health.attention_count }} need attention</a></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="card shadow-sm stat-card h-100">
+        <div class="card-body py-2 px-3">
+          <div class="text-muted small">Delivery</div>
+          {% if delivery_health.in_drought %}
+            <div class="fs-4 fw-bold text-danger"><i class="bi bi-exclamation-triangle"></i></div>
+            <div class="small text-danger fw-semibold">Drought alert</div>
+          {% else %}
+            <div class="fs-4 fw-bold text-success"><i class="bi bi-check-circle"></i></div>
+            <div class="small text-muted">{{ delivery_health.total_recent_failures }} recent failures</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="card shadow-sm stat-card h-100">
+        <div class="card-body py-2 px-3">
+          <div class="text-muted small">Cash headroom</div>
+          <div class="fs-4 fw-bold">{% if portfolio_exposure.cash_headroom is not None %}${{ portfolio_exposure.cash_headroom }}{% else %}—{% endif %}</div>
+          <div class="small text-muted">{% if portfolio_exposure.net_exposure_pct is not None %}{{ portfolio_exposure.net_exposure_pct }}% net exp.{% else %}no equity set{% endif %}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Top opportunities (HERO) ──────────────────────────────────── #}
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+          <h2 class="h5 mb-1"><i class="bi bi-star-fill text-warning me-2"></i>Top scored opportunities</h2>
+          <div class="text-muted small">Highest-scoring signals right now · score = trend + momentum + volume + volatility + quality</div>
+        </div>
+        <div class="d-flex gap-2">
+          <a class="btn btn-sm btn-primary" href="{% url 'signals:list' %}?direction=LONG&min_score=80">All high-conviction</a>
+          <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}">All signals</a>
+        </div>
+      </div>
+      {% if top_opportunities %}
+        <div class="row g-2 mb-3">
+          <div class="col-md-3"><div class="border rounded p-2 text-center"><div class="small text-muted">Fits all guardrails</div><div class="fw-bold fs-5 text-success">{{ top_opportunity_guardrail_summary.OK|default:0 }}</div></div></div>
+          <div class="col-md-3"><div class="border rounded p-2 text-center"><div class="small text-muted">Near cap</div><div class="fw-bold fs-5 text-warning">{{ top_opportunity_guardrail_summary.NEAR|default:0 }}</div></div></div>
+          <div class="col-md-3"><div class="border rounded p-2 text-center"><div class="small text-muted">Over guardrails</div><div class="fw-bold fs-5 text-danger">{{ top_opportunity_guardrail_summary.OVER|default:0 }}</div></div></div>
+          <div class="col-md-3"><div class="border rounded p-2 text-center"><div class="small text-muted">Missing profile</div><div class="fw-bold fs-5 text-secondary">{{ top_opportunity_guardrail_summary.MISSING|default:0 }}</div></div></div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Symbol</th>
+                <th>Dir</th>
+                <th>Score</th>
+                <th>Type</th>
+                <th>Guardrails</th>
+                <th>Generated</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+            {% for s in top_opportunities %}
+              <tr>
+                <td class="fw-semibold"><a href="{% url 'signals:detail' s.pk %}" class="text-decoration-none">{{ s.instrument.symbol }}</a></td>
+                <td>
+                  {% if s.direction == 'LONG' %}<span class="badge text-bg-success">Long</span>
+                  {% elif s.direction == 'SHORT' %}<span class="badge text-bg-danger">Short</span>
+                  {% else %}<span class="badge text-bg-secondary">{{ s.direction }}</span>{% endif %}
+                </td>
+                <td>
+                  <span class="fw-bold {% if s.score >= 80 %}text-success{% elif s.score >= 60 %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ s.score }}</span>
+                </td>
+                <td class="small">{{ s.signal_label|default:s.signal_kind }}</td>
+                <td>
+                  {% with g=top_opportunity_guardrails|get_item:s.pk %}
+                    {% if g.overall_posture == "OVER" %}<span class="badge text-bg-danger">Over</span>
+                    {% elif g.overall_posture == "NEAR" %}<span class="badge text-bg-warning">Near</span>
+                    {% elif g.overall_posture == "OK" %}<span class="badge text-bg-success">Fits</span>
+                    {% else %}<span class="badge text-bg-secondary">{{ g.overall_label }}</span>{% endif %}
+                  {% endwith %}
+                </td>
+                <td class="small text-muted text-nowrap">{{ s.generated_at|date:"M d H:i" }}</td>
+                <td><a class="btn btn-sm btn-outline-primary" href="{% url 'signals:detail' s.pk %}">Review</a></td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="text-muted">No scored opportunities yet. Generate signals to see top picks here.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Urgent holdings + Review queue (side by side) ─────────────── #}
   <div class="row g-3 mb-3">
     <div class="col-lg-6">
       <div class="card shadow-sm h-100">
         <div class="card-body">
           <div class="d-flex align-items-center justify-content-between mb-3">
             <div>
-              <h2 class="h5 mb-1">Pinned signal presets</h2>
-              <div class="text-muted small">Daily signal screeners you want available right from the dashboard.</div>
+              <h2 class="h5 mb-1"><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Urgent held positions</h2>
+              <div class="text-muted small">Positions needing immediate attention.</div>
             </div>
+            <div class="d-flex gap-2">
+              <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}?status=OPEN&recommendation=SELL_NOW">Sell queue</a>
+              <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}?status=OPEN">All holdings</a>
+            </div>
+          </div>
+          {% if held_positions.urgent_snapshots %}
+          <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+              <thead class="table-light"><tr><th>Symbol</th><th>Rec</th><th>Last</th><th>PnL %</th><th></th></tr></thead>
+              <tbody>
+                {% for snap in held_positions.urgent_snapshots %}
+                <tr>
+                  <td class="fw-semibold">{{ snap.position.instrument.symbol }}</td>
+                  <td>
+                    {% if snap.recommendation_code == 'SELL_NOW' %}<span class="badge text-bg-danger">{{ snap.recommendation_label }}</span>
+                    {% elif snap.recommendation_code == 'REVIEW_URGENT' %}<span class="badge text-bg-warning">{{ snap.recommendation_label }}</span>
+                    {% elif snap.recommendation_code == 'TRIM_OR_EXIT' %}<span class="badge text-bg-info">{{ snap.recommendation_label }}</span>
+                    {% else %}<span class="badge text-bg-secondary">{{ snap.recommendation_label }}</span>{% endif %}
+                  </td>
+                  <td>{{ snap.current_price|default:'—' }}</td>
+                  <td class="{% if snap.pnl_pct is not None and snap.pnl_pct < 0 %}text-danger{% elif snap.pnl_pct is not None %}text-success{% endif %}">
+                    {% if snap.pnl_pct is not None %}{{ snap.pnl_pct }}%{% else %}—{% endif %}
+                  </td>
+                  <td><a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:holding_detail' snap.position.pk %}">Review</a></td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="text-muted d-flex align-items-center gap-2 py-2">
+            <i class="bi bi-check-circle text-success fs-5"></i>
+            No urgent positions right now.
+          </div>
+          {% endif %}
+
+          <div class="d-flex gap-2 mt-3 flex-wrap">
+            <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}?status=OPEN">{{ held_positions.total_open|default:0 }} open</a>
+            {% if held_positions.sell_now %}<a class="btn btn-sm btn-outline-danger" href="{% url 'portfolios:holdings' %}?status=OPEN&recommendation=SELL_NOW">{{ held_positions.sell_now }} sell now</a>{% endif %}
+            {% if held_positions.review_now %}<a class="btn btn-sm btn-outline-warning" href="{% url 'portfolios:holdings' %}?status=OPEN&recommendation=REVIEW_URGENT">{{ held_positions.review_now }} review</a>{% endif %}
+            {% if held_positions.missing_from_latest_import %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}?status=OPEN&reconciliation=MISSING_IMPORT">{{ held_positions.missing_from_latest_import }} missing import</a>{% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-3">
+            <div>
+              <h2 class="h5 mb-1"><i class="bi bi-clipboard-check me-2"></i>Review queue</h2>
+              <div class="text-muted small">NEW signals awaiting your decision.</div>
+            </div>
+            <a class="btn btn-sm btn-outline-primary" href="{% url 'signals:list' %}?review_queue=1">Open full queue</a>
+          </div>
+          {% if review_queue %}
+            <div class="table-responsive">
+              <table class="table table-sm table-hover align-middle mb-0">
+                <thead class="table-light"><tr><th>Symbol</th><th>Score</th><th>Type</th><th>Generated</th><th></th></tr></thead>
+                <tbody>
+                {% for s in review_queue %}
+                  <tr>
+                    <td class="fw-semibold"><a href="{% url 'signals:detail' s.pk %}" class="text-decoration-none">{{ s.instrument.symbol }}</a></td>
+                    <td><span class="fw-bold {% if s.score >= 80 %}text-success{% elif s.score >= 60 %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ s.score|default:"—" }}</span></td>
+                    <td class="small">{{ s.signal_label|default:s.signal_kind }}</td>
+                    <td class="small text-muted text-nowrap">{{ s.generated_at|date:"M d H:i" }}</td>
+                    <td><a class="btn btn-sm btn-outline-primary" href="{% url 'signals:detail' s.pk %}">Review</a></td>
+                  </tr>
+                {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="text-muted d-flex align-items-center gap-2 py-2">
+              <i class="bi bi-check-circle text-success fs-5"></i>
+              Review queue is clear.
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Pinned presets ────────────────────────────────────────────── #}
+  <div class="row g-3 mb-3">
+    <div class="col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-3">
+            <h2 class="h5 mb-1"><i class="bi bi-pin me-2"></i>Pinned signal screeners</h2>
             <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}">Manage</a>
           </div>
           {% if signal_preset_widgets %}
             <div class="row g-2">
               {% for item in signal_preset_widgets %}
                 <div class="col-md-6">
-                  <div class="border rounded p-3 h-100 bg-light">
-                    <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
-                      <div>
-                        <div class="fw-semibold">{{ item.preset.name }}</div>
-                        <div class="small text-muted">{{ item.count }} matching signals</div>
-                      </div>
-                      <a class="btn btn-sm btn-outline-primary" href="{% url 'signals:list' %}?{{ item.querystring }}">Open</a>
+                  <div class="border rounded p-2 h-100 bg-light">
+                    <div class="d-flex align-items-start justify-content-between gap-2 mb-1">
+                      <div class="fw-semibold small">{{ item.preset.name }}</div>
+                      <a class="btn btn-sm btn-outline-primary py-0" href="{% url 'signals:list' %}?{{ item.querystring }}">
+                        <span class="badge text-bg-primary me-1">{{ item.count }}</span>Open
+                      </a>
                     </div>
                     <div class="small text-muted">
-                      {% if item.filters.direction %}{{ item.filters.direction }}{% else %}any direction{% endif %} ·
-                      {% if item.filters.timeframe %}{{ item.filters.timeframe }}{% else %}any timeframe{% endif %} ·
-                      {% if item.filters.ownership_state == 'NOT_HELD' %}not held{% elif item.filters.ownership_state == 'HELD_OPEN' %}already held{% else %}any ownership{% endif %}
+                      {% if item.filters.direction %}{{ item.filters.direction }}{% else %}any dir{% endif %} ·
+                      {% if item.filters.timeframe %}{{ item.filters.timeframe }}{% else %}any tf{% endif %} ·
+                      {% if item.filters.ownership_state == 'NOT_HELD' %}not held{% elif item.filters.ownership_state == 'HELD_OPEN' %}held{% else %}any{% endif %}
                     </div>
                   </div>
                 </div>
               {% endfor %}
             </div>
           {% else %}
-            <div class="text-muted">No pinned signal presets yet. Save a signal filter preset and pin it from the Signals page.</div>
+            <div class="text-muted small">No pinned presets. Save a signal filter and pin it from the Signals page.</div>
           {% endif %}
         </div>
       </div>
@@ -58,75 +286,54 @@
       <div class="card shadow-sm h-100">
         <div class="card-body">
           <div class="d-flex align-items-center justify-content-between mb-3">
-            <div>
-              <h2 class="h5 mb-1">Pinned holding presets</h2>
-              <div class="text-muted small">Open your owned-position queues without rebuilding the holding filters.</div>
-            </div>
+            <h2 class="h5 mb-1"><i class="bi bi-pin me-2"></i>Pinned holding views</h2>
             <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}">Manage</a>
           </div>
           {% if holding_preset_widgets %}
             <div class="row g-2">
               {% for item in holding_preset_widgets %}
                 <div class="col-md-6">
-                  <div class="border rounded p-3 h-100 bg-light">
-                    <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
-                      <div>
-                        <div class="fw-semibold">{{ item.preset.name }}</div>
-                        <div class="small text-muted">{{ item.count }} matching holdings</div>
-                      </div>
-                      <a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:holdings' %}?{{ item.querystring }}">Open</a>
+                  <div class="border rounded p-2 h-100 bg-light">
+                    <div class="d-flex align-items-start justify-content-between gap-2 mb-1">
+                      <div class="fw-semibold small">{{ item.preset.name }}</div>
+                      <a class="btn btn-sm btn-outline-primary py-0" href="{% url 'portfolios:holdings' %}?{{ item.querystring }}">
+                        <span class="badge text-bg-primary me-1">{{ item.count }}</span>Open
+                      </a>
                     </div>
                     <div class="small text-muted">
-                      {% if item.filters.recommendation %}{{ item.filters.recommendation|lower|cut:'_' }}{% else %}any recommendation{% endif %} ·
-                      {% if item.filters.status %}{{ item.filters.status|lower }}{% else %}any status{% endif %} ·
-                      {% if item.filters.source %}{{ item.filters.source|lower }}{% else %}any source{% endif %}
+                      {% if item.filters.recommendation %}{{ item.filters.recommendation|lower }}{% else %}any rec{% endif %} ·
+                      {% if item.filters.status %}{{ item.filters.status|lower }}{% else %}any status{% endif %}
                     </div>
                   </div>
                 </div>
               {% endfor %}
             </div>
           {% else %}
-            <div class="text-muted">No pinned holding presets yet. Save a holdings filter preset and pin it from the Holdings page.</div>
+            <div class="text-muted small">No pinned presets. Save a holding filter and pin it from the Holdings page.</div>
           {% endif %}
         </div>
       </div>
     </div>
   </div>
 
-
-  <div class="row g-3 mb-3">
-    <div class="col-md-3">
-      <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Watchlist / data-ready</div><div class="display-6">{{ watchlist_count }} <span class="fs-6 text-muted">/ {{ data_ready_count }}</span></div><div class="small text-muted mt-2">Backlog: {{ ingestion_backlog_count }}</div><div class="small text-muted">High priority: <a href="{% url 'portfolios:watchlist' %}?priority=HIGH">{{ watchlist_priority_counts.HIGH|default:0 }}</a></div></div></div>
-    </div>
-    <div class="col-md-3">
-      <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Active strategy configs</div><div class="display-6">{{ active_configs }}</div></div></div>
-    </div>
-    <div class="col-md-3">
-      <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Signals / NEW</div><div class="display-6">{{ signal_counts.total|default:0 }} <span class="fs-6 text-muted">/ {{ signal_counts.new|default:0 }}</span></div></div></div>
-    </div>
-    <div class="col-md-3">
-      <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Pending outcome reviews</div><div class="display-6">{{ pending_outcome_count|default:0 }}</div></div></div>
-    </div>
-  </div>
-
-
+  {# ── Sector board ──────────────────────────────────────────────── #}
   {% if watchlist_sector_board %}
   <div class="card shadow-sm mb-3">
     <div class="card-body">
       <div class="d-flex align-items-center justify-content-between mb-3">
         <div>
-          <h2 class="h5 mb-1">Watchlist sector board</h2>
-          <div class="small text-muted">Theme-level posture inside {{ watchlist.name }}.</div>
+          <h2 class="h5 mb-1"><i class="bi bi-grid-3x3-gap me-2"></i>Sector board — {{ watchlist.name }}</h2>
+          <div class="small text-muted">Theme-level posture across your watchlist.</div>
         </div>
         <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:watchlist' %}">Open watchlist</a>
       </div>
       <div class="table-responsive">
-        <table class="table table-sm align-middle mb-0">
-          <thead><tr><th>Sector / theme</th><th>Symbols</th><th>Held</th><th>Long / short</th><th>Avg score</th><th>Posture</th></tr></thead>
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead class="table-light"><tr><th>Sector / theme</th><th>Symbols</th><th>Held</th><th>Long / short</th><th>Avg score</th><th>Posture</th></tr></thead>
           <tbody>
             {% for sector in watchlist_sector_board %}
               <tr>
-                <td><a href="{% url 'portfolios:watchlist' %}?sector={{ sector.label|urlencode }}">{{ sector.label }}</a></td>
+                <td><a href="{% url 'portfolios:watchlist' %}?sector={{ sector.label|urlencode }}" class="text-decoration-none fw-semibold">{{ sector.label }}</a></td>
                 <td>{{ sector.symbol_count }}</td>
                 <td>{{ sector.held_count }}</td>
                 <td>{{ sector.long_count }} / {{ sector.short_count }}</td>
@@ -145,996 +352,337 @@
   </div>
   {% endif %}
 
+  {# ── Allocation + Sector exposure ──────────────────────────────── #}
   <div class="row g-3 mb-3">
-    <div class="col-md-3">
-      <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Held positions</div><div class="display-6">{{ held_positions.total_open|default:0 }}</div></div></div>
-    </div>
-    <div class="col-md-3">
-      <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Closed paper trades</div><div class="display-6">{{ analytics_summary.paper_closed_count|default:0 }}</div><div class="small text-muted mt-2">Win rate: {% if analytics_summary.paper_win_rate is not None %}{{ analytics_summary.paper_win_rate }}%{% else %}—{% endif %}</div><div class="small text-muted">Best bucket: {% if analytics_summary.best_paper_bucket %}{{ analytics_summary.best_paper_bucket.label }}{% else %}—{% endif %}</div><div class="small text-muted mt-2"><a href="{% url 'dashboard:analytics' %}">Open analytics</a></div></div></div>
-    </div>
-    <div class="col-md-3">
-      <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Held sell now</div><div class="display-6">{{ held_positions.sell_now|default:0 }}</div></div></div>
-    </div>
-    <div class="col-md-3">
-      <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Held review now</div><div class="display-6">{{ held_positions.review_now|default:0 }}</div></div></div>
-    </div>
-    <div class="col-md-3">
-      <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Held trim / exit</div><div class="display-6">{{ held_positions.trim_or_exit|default:0 }}</div><div class="small text-muted mt-2"><a href="{% url 'portfolios:holdings' %}">Manage holdings</a></div></div></div>
-    </div>
-    <div class="col-md-3">
-      <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Missing from latest import</div><div class="display-6">{{ held_positions.missing_from_latest_import|default:0 }}</div><div class="small text-muted mt-2"><a href="{% url 'portfolios:holdings' %}?status=OPEN&reconciliation=MISSING_IMPORT">Open reconciliation queue</a></div></div></div>
-    </div>
-  </div>
-  <div class="row g-3 mb-3">
-    <div class="col-md-6">
+    <div class="col-lg-7">
       <div class="card shadow-sm h-100">
         <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-2"><div class="text-muted small">Portfolio health score</div><a class="small" href="{% url 'portfolios:portfolio_health_score' %}">Open scorecard</a></div>
-          <div class="display-6">{{ portfolio_health.overall_score }}</div>
-          <div class="small text-muted mt-2">{{ portfolio_health.overall_grade_label }} · {{ portfolio_health.attention_count }} account{% if portfolio_health.attention_count != 1 %}s{% endif %} need attention</div>
-          {% if portfolio_health.weakest_account %}<div class="small text-muted">Weakest: {{ portfolio_health.weakest_account.account_label }} ({{ portfolio_health.weakest_account.score }})</div>{% endif %}
-          {% if portfolio_health_history.latest %}<div class="small text-muted">Snapshot {{ portfolio_health_history.latest.created_at|date:"Y-m-d H:i" }}{% if portfolio_health_history.score_delta is not None %} · Δ {{ portfolio_health_history.score_delta }}{% endif %}</div>{% endif %}
-        </div>
-      </div>
-    </div>
-    <div class="col-md-6">
-      <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Broker snapshot drift</div>{% if broker_snapshot_posture.latest %}{% if broker_snapshot_posture.combined_latest_snapshot_count > 1 %}<div class="display-6">{% if broker_snapshot_posture.combined_market_value_drift > 0 %}+{% endif %}${{ broker_snapshot_posture.combined_market_value_drift }}</div><div class="small text-muted mt-2">Combined latest posture across {{ broker_snapshot_posture.combined_latest_snapshot_count }} accounts</div><div class="small text-muted">{% if broker_snapshot_posture.combined_market_value_drift_pct is not None %}{{ broker_snapshot_posture.combined_market_value_drift_pct }}% vs combined broker invested{% else %}—{% endif %}</div>{% else %}<div class="display-6">{% if broker_snapshot_posture.market_value_drift > 0 %}+{% endif %}${{ broker_snapshot_posture.market_value_drift }}</div><div class="small text-muted mt-2">{% if broker_snapshot_posture.latest.account_label %}{{ broker_snapshot_posture.latest.account_label }} · {% endif %}{{ broker_snapshot_posture.latest.source_label }} · {{ broker_snapshot_posture.latest.as_of }}</div><div class="small text-muted">{% if broker_snapshot_posture.market_value_drift_pct is not None %}{{ broker_snapshot_posture.market_value_drift_pct }}% vs broker invested{% else %}—{% endif %}</div>{% endif %}<div class="small text-muted mt-2"><a href="{% url 'portfolios:risk_settings' %}">Open allocation controls</a></div>{% else %}<div class="display-6">—</div><div class="small text-muted mt-2">No broker/account snapshot saved yet.</div>{% endif %}</div></div>
-    </div>
-    <div class="col-md-6">
-      <div class="card shadow-sm h-100">
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-2"><div class="text-muted small">Account risk posture</div><a class="small" href="{% url 'portfolios:risk_settings' %}">Open allocation controls</a></div>
-          {% if account_risk_posture.rows %}
-            <div class="small text-muted mb-2">{{ account_risk_posture.count }} accounts tracked · {{ account_risk_posture.posture_counts.OVER|default:0 }} over · {{ account_risk_posture.posture_counts.NEAR|default:0 }} near</div>
+          <div class="d-flex align-items-center justify-content-between mb-3">
+            <div>
+              <h2 class="h5 mb-0"><i class="bi bi-wallet2 me-2"></i>Allocation posture</h2>
+              <div class="small text-muted">Capital sizing and concentration for held positions.</div>
+            </div>
+            <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:risk_settings' %}">Allocation controls</a>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="small text-muted">Equity</div><div class="fw-semibold">{% if portfolio_exposure.account_equity is not None %}${{ portfolio_exposure.account_equity }}{% else %}Not set{% endif %}</div></div></div>
+            <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="small text-muted">Market value</div><div class="fw-semibold">${{ portfolio_exposure.total_market_value }}</div></div></div>
+            <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="small text-muted">Net exposure</div><div class="fw-semibold">{% if portfolio_exposure.net_exposure_pct is not None %}{{ portfolio_exposure.net_exposure_pct }}%{% else %}—{% endif %}</div></div></div>
+            <div class="col-6 col-md-3"><div class="border rounded p-2"><div class="small text-muted">Cash headroom</div><div class="fw-semibold">{% if portfolio_exposure.cash_headroom is not None %}${{ portfolio_exposure.cash_headroom }}{% else %}—{% endif %}</div></div></div>
+          </div>
+          {% if portfolio_exposure.top_positions %}
             <div class="table-responsive">
               <table class="table table-sm align-middle mb-0">
-                <thead><tr><th>Account</th><th>Posture</th><th>Deployment</th><th>Issues</th></tr></thead>
+                <thead><tr><th>Largest holding</th><th>Market value</th><th>Weight</th></tr></thead>
                 <tbody>
-                  {% for row in account_risk_posture.rows|slice:":4" %}
+                  {% for item in portfolio_exposure.top_positions %}
                     <tr>
-                      <td><div class="fw-semibold">{{ row.account_label }}</div><div class="small text-muted">${{ row.exposure.total_market_value }} tracked</div></td>
-                      <td>{% if row.overall_posture == "OVER" %}<span class="badge text-bg-danger">Over</span>{% elif row.overall_posture == "NEAR" %}<span class="badge text-bg-warning">Near</span>{% elif row.overall_posture == "NO_EQUITY" %}<span class="badge text-bg-secondary">No equity</span>{% else %}<span class="badge text-bg-success">OK</span>{% endif %}</td>
-                      <td>{% if row.deployment_pct is not None %}{{ row.deployment_pct }}%{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                      <td><span class="small {% if row.unresolved_count or row.missing_from_latest_import %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.unresolved_count }} unresolved · {{ row.missing_from_latest_import }} missing</span></td>
+                      <td><a href="{% url 'portfolios:holding_detail' item.position.pk %}">{{ item.position.instrument.symbol }}</a></td>
+                      <td>${{ item.market_value }}</td>
+                      <td>{% if item.weight_pct is not None %}{{ item.weight_pct }}%{% else %}—{% endif %}</td>
                     </tr>
                   {% endfor %}
                 </tbody>
               </table>
             </div>
-            {% if account_exposure_heatmap.rows %}
-              <hr class="my-3">
-              <div class="small text-muted mb-2">Exposure heatmap</div>
-              <div class="table-responsive">
-                <table class="table table-sm align-middle mb-0">
-                  <thead><tr><th>Account</th><th>Top sector</th><th>Top name</th><th>Heat</th></tr></thead>
-                  <tbody>
-                    {% for row in account_exposure_heatmap.rows|slice:":4" %}
-                      <tr>
-                        <td>{{ row.account_label }}</td>
-                        <td>{% if row.top_sector %}{{ row.top_sector.sector }} · {{ row.top_sector.weight_pct }}%{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                        <td>{% if row.top_position %}{{ row.top_position.position.instrument.symbol }} · {{ row.top_position.weight_pct }}%{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                        <td>{% if row.overall_posture == "OVER" %}<span class="badge text-bg-danger">Over</span>{% elif row.overall_posture == "NEAR" %}<span class="badge text-bg-warning">Near</span>{% else %}<span class="badge text-bg-success">OK</span>{% endif %}</td>
-                      </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-            {% endif %}
-            {% if account_drawdown_monitoring.rows %}
-              <hr class="my-3">
-              <div class="small text-muted mb-2">Account drawdown monitoring</div>
-              <div class="table-responsive">
-                <table class="table table-sm align-middle mb-0">
-                  <thead><tr><th>Account</th><th>Worst name</th><th>Drawdown</th><th>Posture</th></tr></thead>
-                  <tbody>
-                    {% for row in account_drawdown_monitoring.rows|slice:":4" %}
-                      <tr>
-                        <td>{{ row.account_label }}</td>
-                        <td>{% if row.worst_snapshot %}{{ row.worst_snapshot.position.instrument.symbol }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                        <td>{% if row.worst_drawdown_pct is not None %}{{ row.worst_drawdown_pct }}%{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                        <td>{% if row.overall_posture == "STRESSED" %}<span class="badge text-bg-danger">Stressed</span>{% elif row.overall_posture == "WARNING" %}<span class="badge text-bg-warning">Warning</span>{% elif row.overall_posture == "NO_OPEN" %}<span class="badge text-bg-secondary">No open</span>{% else %}<span class="badge text-bg-success">OK</span>{% endif %}</td>
-                      </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-            {% endif %}
-            {% if account_stop_guardrails.rows %}
-              <hr class="my-3">
-              <div class="small text-muted mb-2">Account stop / risk guardrails</div>
-              <div class="table-responsive">
-                <table class="table table-sm align-middle mb-0">
-                  <thead><tr><th>Account</th><th>Posture</th><th>Missing / wide</th><th>Hottest name</th></tr></thead>
-                  <tbody>
-                    {% for row in account_stop_guardrails.rows|slice:":4" %}
-                      <tr>
-                        <td>{{ row.account_label }}</td>
-                        <td>{% if row.overall_posture == "OVER" %}<span class="badge text-bg-danger">Over</span>{% elif row.overall_posture == "NEAR" %}<span class="badge text-bg-warning">Near</span>{% else %}<span class="badge text-bg-success">OK</span>{% endif %}</td>
-                        <td><span class="small {% if row.missing_stop_count or row.stop_too_wide_count %}text-danger{% else %}text-muted{% endif %}">{{ row.missing_stop_count }} missing · {{ row.stop_too_wide_count }} wide</span></td>
-                        <td>{% if row.hottest %}{{ row.hottest.position.instrument.symbol }} · {{ row.hottest.risk_guardrail_label }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                      </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-            {% endif %}
-            {% if account_holding_queues.rows %}
-              <hr class="my-3">
-              <div class="small text-muted mb-2">Account holding queues</div>
-              <div class="table-responsive">
-                <table class="table table-sm align-middle mb-0">
-                  <thead><tr><th>Account</th><th>Sell / review</th><th>Import / stop debt</th><th>Hot names</th></tr></thead>
-                  <tbody>
-                    {% for row in account_holding_queues.rows|slice:":4" %}
-                    <tr>
-                      <td>{{ row.account_label }}</td>
-                      <td><span class="small {% if row.queue_counts.sell_now %}text-danger{% else %}text-muted{% endif %}">{{ row.queue_counts.sell_now }} sell</span> · <span class="small {% if row.queue_counts.review_now or row.queue_counts.trim_or_exit %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.queue_counts.review_now }} review · {{ row.queue_counts.trim_or_exit }} trim</span></td>
-                      <td><span class="small {% if row.queue_counts.missing_import or row.queue_counts.missing_stop %}text-danger{% else %}text-muted{% endif %}">{{ row.queue_counts.missing_import }} missing import · {{ row.queue_counts.missing_stop }} missing stop</span></td>
-                      <td>{% if row.hot_symbols %}{{ row.hot_symbols|join:", " }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                    </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-            {% endif %}
-            {% if stop_discipline_trends.period_rows %}
-              <hr class="my-3">
-              <div class="small text-muted mb-2">Stop-discipline trend</div>
-              <div class="small {% if stop_discipline_trends.trend_direction == "DEGRADING" %}text-danger{% elif stop_discipline_trends.trend_direction == "IMPROVING" %}text-success{% else %}text-muted{% endif %}">{{ stop_discipline_trends.trend_label }}{% if stop_discipline_trends.hygiene_delta is not None %} · hygiene {{ stop_discipline_trends.hygiene_delta }} pts vs prior 30d{% endif %}{% if stop_discipline_trends.debt_rate_delta is not None %} · debt {{ stop_discipline_trends.debt_rate_delta }} pts{% endif %}</div>
-            {% endif %}
-            {% if stop_policy_timeliness.recent_30.count %}
-              <hr class="my-3">
-              <div class="small text-muted mb-2">Stop-policy timeliness</div>
-              <div class="small {% if stop_policy_timeliness.trend_direction == "DEGRADING" %}text-danger{% elif stop_policy_timeliness.trend_direction == "IMPROVING" %}text-success{% else %}text-muted{% endif %}">{{ stop_policy_timeliness.trend_label }} · {{ stop_policy_timeliness.recent_30.on_time_rate|default:"—" }}% on time · {{ stop_policy_timeliness.followup_summary.overdue|default:0 }} overdue · {{ stop_policy_timeliness.followup_summary.pending|default:0 }} pending ({{ stop_policy_timeliness.target_hours }}h target)</div>
-              <div class="small mt-1"><a href="{% url 'portfolios:stop_policy_followup' %}">Open stop-policy follow-up queue</a></div>
-            {% endif %}
-            {% if stop_policy_exception_trends.recent_30_count %}
-              <hr class="my-3">
-              <div class="small text-muted mb-2">Stop-policy exceptions</div>
-              <div class="small {% if stop_policy_exception_trends.trend_direction == "DEGRADING" %}text-danger{% elif stop_policy_exception_trends.trend_direction == "IMPROVING" %}text-success{% elif stop_policy_exception_trends.trend_direction == "WATCH" %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ stop_policy_exception_trends.trend_label }} · {{ stop_policy_exception_trends.recent_30_count }} exceptions in 30d{% if stop_policy_exception_trends.exception_delta is not None %} · delta {{ stop_policy_exception_trends.exception_delta }}{% endif %} · {{ stop_policy_exception_trends.recurring_symbol_count }} recurring symbol{{ stop_policy_exception_trends.recurring_symbol_count|pluralize }}{% if stop_policy_exception_trends.remediation_ready_count %} · {{ stop_policy_exception_trends.remediation_ready_count }} ready for cleanup{% endif %}{% if stop_policy_exception_trends.operations_summary.overdue_recent_count %} · {{ stop_policy_exception_trends.operations_summary.overdue_recent_count }} overdue{% endif %}{% if stop_policy_exception_trends.operations_summary.waiting_confirmation_with_evidence or stop_policy_exception_trends.operations_summary.waiting_confirmation_without_evidence %} · waiting-confirmation evidence {{ stop_policy_exception_trends.operations_summary.waiting_confirmation_with_evidence }}/{{ stop_policy_exception_trends.operations_summary.waiting_confirmation_count }}{% endif %}{% if stop_policy_exception_trends.operations_summary.waiting_confirmation_linked_count %} · broker-linked waiting {{ stop_policy_exception_trends.operations_summary.waiting_confirmation_linked_count }}{% endif %}{% if stop_policy_exception_trends.operations_summary.unsupported_waiting_confirmation_count %} · unsupported waiting {{ stop_policy_exception_trends.operations_summary.unsupported_waiting_confirmation_count }}{% endif %}{% if stop_policy_exception_trends.operations_summary.top_sla_reason_label %} · top stale reason: {{ stop_policy_exception_trends.operations_summary.top_sla_reason_label }}{% endif %}{% if stop_policy_exception_trends.operations_summary.top_evidence_label %} · top evidence bucket: {{ stop_policy_exception_trends.operations_summary.top_evidence_label }}{% endif %}{% if stop_policy_exception_trends.operations_summary.top_quality_label %} · top quality bucket: {{ stop_policy_exception_trends.operations_summary.top_quality_label }}{% endif %}{% if stop_policy_exception_trends.operations_summary.attachment_recent_count %} · attachments: {{ stop_policy_exception_trends.operations_summary.attachment_recent_count }}{% if stop_policy_exception_trends.operations_summary.attachment_expiring_soon_count %} · expiring soon {{ stop_policy_exception_trends.operations_summary.attachment_expiring_soon_count }}{% endif %}{% if stop_policy_exception_trends.operations_summary.attachment_expired_count %} · expired {{ stop_policy_exception_trends.operations_summary.attachment_expired_count }}{% endif %}{% endif %}{% if stop_policy_exception_trends.playbook_rows %} · top playbook: {{ stop_policy_exception_trends.playbook_rows.0.label }}{% endif %}</div>
-            {% endif %}
-
-            {% if account_retention_override_posture.rows %}
-              <hr class="my-3">
-              <div class="d-flex align-items-center justify-content-between mb-2"><div class="small text-muted">Account retention policy posture</div><a class="small" href="{% url 'portfolios:risk_settings' %}">Edit in Allocation Controls</a></div>
-              <div class="small text-muted mb-2">{{ account_retention_override_posture.custom_count }} custom override{{ account_retention_override_posture.custom_count|pluralize }} · {{ account_retention_override_posture.global_count }} using global presets{% if account_retention_override_posture.most_detailed %} · most detailed: {{ account_retention_override_posture.most_detailed.account_label }} ({{ account_retention_override_posture.most_detailed.range_label }}){% endif %}</div>
-              <div class="table-responsive">
-                <table class="table table-sm align-middle mb-0">
-                  <thead><tr><th>Account</th><th>Source</th><th>Window range</th></tr></thead>
-                  <tbody>
-                    {% for row in account_retention_override_posture.rows|slice:":4" %}
-                      <tr>
-                        <td>{{ row.account_label }}</td>
-                        <td>{% if row.uses_override %}<span class="badge text-bg-info">Custom</span>{% else %}<span class="badge text-bg-secondary">Global</span>{% endif %}</td>
-                        <td>{{ row.range_label }}</td>
-                      </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-            {% endif %}
-            {% if account_retention_template_drift.rows %}
-              <hr class="my-3">
-              <div class="d-flex align-items-center justify-content-between mb-2"><div class="small text-muted">Template drift posture</div><a class="small" href="{% url 'portfolios:risk_settings' %}">Open remediation</a></div>
-              <div class="small text-muted mb-2">{{ account_retention_template_drift.aligned_count }} aligned · {{ account_retention_template_drift.drifted_count }} drifted{% if account_retention_template_drift.top_drifted %} · top drift: {{ account_retention_template_drift.top_drifted.account_label }} ({{ account_retention_template_drift.top_drifted.changed_field_count }} field{{ account_retention_template_drift.top_drifted.changed_field_count|pluralize }}){% endif %}</div>
-              <div class="table-responsive">
-                <table class="table table-sm align-middle mb-0">
-                  <thead><tr><th>Account</th><th>Template</th><th>Status</th></tr></thead>
-                  <tbody>
-                    {% for row in account_retention_template_drift.rows|slice:":4" %}
-                      <tr>
-                        <td>{{ row.account_label }}</td>
-                        <td>{{ row.template_name }}</td>
-                        <td>{% if row.changed_field_count %}<span class="badge text-bg-warning">{{ row.changed_field_count }} drifted</span>{% else %}<span class="badge text-bg-success">Aligned</span>{% endif %}</td>
-                      </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-            {% endif %}
-
-            {% if evidence_lifecycle_automation.attachment_count %}
-              <hr class="my-3">
-              <div class="d-flex align-items-center justify-content-between mb-2"><div class="small text-muted">Evidence lifecycle posture</div><a class="small" href="{% url 'portfolios:stop_policy_followup' %}">Open lifecycle queue</a></div>
-              <div class="small {% if evidence_lifecycle_automation.queue_pressure == "OVER" %}text-danger{% elif evidence_lifecycle_automation.queue_pressure == "NEAR" %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ evidence_lifecycle_automation.attachment_count }} attachment-backed rows · {{ evidence_lifecycle_automation.expiring_soon_count }} expiring soon · {{ evidence_lifecycle_automation.expired_count }} expired · {{ evidence_lifecycle_automation.missing_retention_count }} missing retention{% if evidence_lifecycle_automation.last_run %} · last run {{ evidence_lifecycle_automation.last_run.created_at|date:"Y-m-d H:i" }}{% endif %}</div>
-            {% endif %}
-
-            {% if stop_discipline_history.rows %}
-              <hr class="my-3">
-              <div class="small text-muted mb-2">Stop-discipline history</div>
-              <div class="small {% if stop_discipline_history.posture_counts.OVER %}text-danger{% else %}text-muted{% endif %}">{{ stop_discipline_history.posture_counts.OVER|default:0 }} over-posture events · {{ stop_discipline_history.missing_stop_events }} missing-stop opens/adds in recent transaction history</div>
-            {% endif %}
           {% else %}
-            <div class="display-6">—</div>
-            <div class="small text-muted mt-2">No labeled accounts or broker account snapshots yet.</div>
+            <div class="small text-muted">No open holdings yet.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-5">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-3">
+            <div>
+              <h2 class="h5 mb-0"><i class="bi bi-pie-chart me-2"></i>Sector exposure</h2>
+              <div class="small text-muted">Holdings by sector/theme tag.</div>
+            </div>
+            <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings_sector_exposure' %}">Full view</a>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6"><div class="border rounded p-2"><div class="small text-muted">Sectors</div><div class="fw-semibold">{{ holding_sector_exposure.sector_count }}</div></div></div>
+            <div class="col-6"><div class="border rounded p-2"><div class="small text-muted">Over cap</div><div class="fw-semibold {% if holding_sector_exposure.over_cap_count %}text-danger{% endif %}">{{ holding_sector_exposure.over_cap_count }}</div></div></div>
+          </div>
+          {% if holding_sector_exposure.rows %}
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead><tr><th>Sector</th><th>Value</th><th>Weight</th><th>Cap</th></tr></thead>
+                <tbody>
+                  {% for row in holding_sector_exposure.rows|slice:":5" %}
+                    <tr>
+                      <td>{{ row.sector }}</td>
+                      <td>${{ row.market_value }}</td>
+                      <td>{% if row.weight_pct is not None %}{{ row.weight_pct }}%{% else %}—{% endif %}</td>
+                      <td>{% if row.cap_posture == "OVER" %}<span class="badge text-bg-danger">Over</span>{% elif row.cap_posture == "NEAR" %}<span class="badge text-bg-warning">Near</span>{% else %}<span class="badge text-bg-success">OK</span>{% endif %}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="small text-muted">No open holdings yet.</div>
           {% endif %}
         </div>
       </div>
     </div>
   </div>
 
+  {# ── Recent evaluated outcomes ─────────────────────────────────── #}
+  {% if recent_outcomes %}
   <div class="card shadow-sm mb-3">
     <div class="card-body">
       <div class="d-flex align-items-center justify-content-between mb-3">
         <div>
-          <h2 class="h5 mb-1">Urgent held positions</h2>
-          <div class="text-muted small">Owned positions sorted by the strongest current sell or review recommendation.</div>
+          <h2 class="h5 mb-0"><i class="bi bi-trophy me-2"></i>Recent evaluated outcomes</h2>
+          <div class="small text-muted">Lookahead feedback from closed signal evaluations.</div>
         </div>
-        <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}">Open holdings</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:analytics' %}">Analytics</a>
       </div>
-      {% if held_positions.urgent_snapshots %}
       <div class="table-responsive">
-        <table class="table table-sm align-middle mb-0">
-          <thead><tr><th>Symbol</th><th>Recommendation</th><th>Last</th><th>PnL %</th><th>Status</th><th></th></tr></thead>
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead class="table-light"><tr><th>Symbol</th><th>Outcome</th><th>Return %</th><th>MFE %</th><th>MAE %</th></tr></thead>
           <tbody>
-            {% for snap in held_positions.urgent_snapshots %}
+          {% for o in recent_outcomes %}
             <tr>
-              <td>{{ snap.position.instrument.symbol }}</td>
-              <td>
-                {% if snap.recommendation_code == 'SELL_NOW' %}<span class="badge text-bg-danger">{{ snap.recommendation_label }}</span>
-                {% elif snap.recommendation_code == 'REVIEW_URGENT' %}<span class="badge text-bg-warning">{{ snap.recommendation_label }}</span>
-                {% elif snap.recommendation_code == 'TRIM_OR_EXIT' %}<span class="badge text-bg-success">{{ snap.recommendation_label }}</span>
-                {% elif snap.recommendation_code == 'REVIEW' %}<span class="badge text-bg-secondary">{{ snap.recommendation_label }}</span>
-                {% else %}<span class="badge text-bg-success">{{ snap.recommendation_label }}</span>{% endif %}
-              </td>
-              <td>{{ snap.current_price|default:'—' }}</td>
-              <td>{% if snap.pnl_pct is not None %}{{ snap.pnl_pct }}%{% else %}—{% endif %}</td>
-              <td>{{ snap.status_label }}</td>
-              <td><a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:holding_detail' snap.position.pk %}">Review</a></td>
+              <td class="fw-semibold"><a href="{% url 'signals:detail' o.signal.pk %}" class="text-decoration-none">{{ o.signal.instrument.symbol }}</a></td>
+              <td>{{ o.outcome_label|default:o.status }}</td>
+              <td class="{% if o.return_pct is not None and o.return_pct < 0 %}text-danger{% elif o.return_pct is not None %}text-success{% endif %}">{{ o.return_pct|default:"—" }}</td>
+              <td>{{ o.max_favorable_excursion_pct|default:"—" }}</td>
+              <td>{{ o.max_adverse_excursion_pct|default:"—" }}</td>
             </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Paper trade lifecycle ──────────────────────────────────────── #}
+  {% if open_positions %}
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+          <h2 class="h5 mb-0"><i class="bi bi-activity me-2"></i>Open paper trade lifecycle</h2>
+          <div class="small text-muted">{{ trade_lifecycle.total_open|default:0 }} open · {{ trade_lifecycle.exit_ready|default:0 }} exit ready · {{ trade_lifecycle.stale_count|default:0 }} stale prices</div>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead class="table-light"><tr><th>Symbol</th><th>Dir</th><th>Stage</th><th>Last</th><th>PnL %</th><th>Stop</th><th>Target</th><th></th></tr></thead>
+          <tbody>
+            {% for trade in open_positions %}
+              <tr>
+                <td class="fw-semibold"><a href="{% url 'signals:detail' trade.signal.pk %}" class="text-decoration-none">{{ trade.signal.instrument.symbol }}</a></td>
+                <td>
+                  {% if trade.signal.direction == 'LONG' %}<span class="badge text-bg-success">L</span>
+                  {% else %}<span class="badge text-bg-danger">S</span>{% endif %}
+                </td>
+                <td class="small">{{ trade.lifecycle_stage }}</td>
+                <td>{{ trade.last_price|default:"—" }}</td>
+                <td class="{% if trade.pnl_pct is not None and trade.pnl_pct < 0 %}text-danger{% elif trade.pnl_pct is not None %}text-success{% endif %}">{% if trade.pnl_pct is not None %}{{ trade.pnl_pct }}%{% else %}—{% endif %}</td>
+                <td class="small">{{ trade.active_stop_price|default:"—" }}</td>
+                <td class="small">{{ trade.active_target_price|default:"—" }}</td>
+                <td><a class="btn btn-sm btn-outline-primary" href="{% url 'signals:detail' trade.signal.pk %}">Manage</a></td>
+              </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
-      {% else %}
-      <div class="text-muted">No open held positions yet.</div>
-      {% endif %}
     </div>
   </div>
-  <div class="row g-3 mb-3">
-    <div class="col-md-3">
-      <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Open paper trades</div><div class="display-6">{{ trade_lifecycle.total_open|default:0 }}</div><div class="small text-muted mt-2">Stop risk: {{ trade_lifecycle.stop_risk|default:0 }}</div></div></div>
-    </div>
-    <div class="col-md-3">
-      <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Active / T1 reached</div><div class="display-6">{{ trade_lifecycle.active|default:0 }} <span class="fs-6 text-muted">/ {{ trade_lifecycle.target_1|default:0 }}</span></div></div></div>
-    </div>
-    <div class="col-md-3">
-      <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Exit ready</div><div class="display-6">{{ trade_lifecycle.exit_ready|default:0 }}</div></div></div>
-    </div>
-    <div class="col-md-3">
-      <div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Lifecycle stale prices</div><div class="display-6">{{ trade_lifecycle.stale_count|default:0 }}</div></div></div>
-    </div>
-  </div>
+  {% endif %}
 
-  <div class="row g-3 mb-3">
-    <div class="col-lg-12">
-      <div class="card shadow-sm h-100">
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-3">
-            <h2 class="h5 mb-0">Open trade lifecycle</h2>
-            <div class="small text-muted">Where open positions stand right now</div>
-          </div>
-          {% if open_positions %}
-            <div class="table-responsive">
-              <table class="table table-sm align-middle mb-0">
-                <thead><tr><th>Symbol</th><th>Stage</th><th>Last</th><th>PnL %</th><th>Active stop</th><th>Active target</th><th>Trailing %</th><th>Action</th></tr></thead>
-                <tbody>
-                  {% for trade in open_positions %}
-                    <tr>
-                      <td><a href="{% url 'signals:detail' trade.signal.pk %}">{{ trade.signal.instrument.symbol }}</a></td>
-                      <td>{{ trade.lifecycle_stage }}</td>
-                      <td>{{ trade.last_price|default:"—" }}</td>
-                      <td>{% if trade.pnl_pct is not None %}{{ trade.pnl_pct }}%{% else %}—{% endif %}</td>
-                      <td>{{ trade.active_stop_price|default:"—" }}</td>
-                      <td>{{ trade.active_target_price|default:"—" }}</td>
-                      <td>{{ trade.trailing_stop_pct|default:"—" }}</td>
-                      <td><a class="btn btn-sm btn-outline-primary" href="{% url 'signals:detail' trade.signal.pk %}">Manage</a></td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-            <div class="small text-muted mt-2">Use <code>python manage.py sync_trade_lifecycle</code> to refresh all open paper trades from the latest bar data. The scheduler can also run that automatically.</div>
-          {% else %}
-            <div class="text-muted">No open paper trades yet.</div>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="row g-3 mb-3">
-  <div class="col-lg-12">
-    <div class="card shadow-sm">
-      <div class="card-body">
-        <div class="d-flex align-items-center justify-content-between mb-3">
-          <div>
-            <h2 class="h5 mb-0">Allocation posture</h2>
-            <div class="small text-muted">Capital sizing and concentration view for current owned holdings.</div>
-          </div>
-          <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:risk_settings' %}">Allocation controls</a>
-        </div>
-        <div class="row g-2 mb-3">
-          <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Account equity</div><div class="fw-semibold">{% if portfolio_exposure.account_equity is not None %}${{ portfolio_exposure.account_equity }}{% else %}Not set{% endif %}</div></div></div>
-          <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Held market value</div><div class="fw-semibold">${{ portfolio_exposure.total_market_value }}</div></div></div>
-          <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Gross exposure</div><div class="fw-semibold">{% if portfolio_exposure.gross_exposure_pct is not None %}{{ portfolio_exposure.gross_exposure_pct }}%{% else %}—{% endif %}</div></div></div>
-          <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Net exposure</div><div class="fw-semibold">{% if portfolio_exposure.net_exposure_pct is not None %}{{ portfolio_exposure.net_exposure_pct }}%{% else %}—{% endif %}</div></div></div>
-          <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Cash headroom</div><div class="fw-semibold">{% if portfolio_exposure.cash_headroom is not None %}${{ portfolio_exposure.cash_headroom }}{% else %}—{% endif %}</div></div></div>
-        </div>
-        {% if portfolio_exposure.top_positions %}
-          <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0">
-              <thead><tr><th>Largest holding</th><th>Market value</th><th>Weight</th></tr></thead>
-              <tbody>
-                {% for item in portfolio_exposure.top_positions %}
-                  <tr>
-                    <td><a href="{% url 'portfolios:holding_detail' item.position.pk %}">{{ item.position.instrument.symbol }}</a></td>
-                    <td>${{ item.market_value }}</td>
-                    <td>{% if item.weight_pct is not None %}{{ item.weight_pct }}%{% else %}—{% endif %}</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        {% else %}
-          <div class="small text-muted">No open holdings yet, so exposure is still flat.</div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-  <div class="col-lg-5">
-    <div class="card shadow-sm">
-      <div class="card-body">
-        <div class="d-flex align-items-center justify-content-between mb-3">
-          <div>
-            <h2 class="h5 mb-0">Sector exposure</h2>
-            <div class="small text-muted">Owned holdings grouped by your active watchlist sector/theme tags.</div>
-          </div>
-          <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings_sector_exposure' %}">Open sector view</a>
-        </div>
-        <div class="row g-2 mb-3">
-          <div class="col-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Tracked sectors</div><div class="fw-semibold">{{ holding_sector_exposure.sector_count }}</div></div></div>
-          <div class="col-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Unassigned</div><div class="fw-semibold">{{ holding_sector_exposure.unassigned_count }}</div></div></div>
-          <div class="col-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Over cap</div><div class="fw-semibold">{{ holding_sector_exposure.over_cap_count }}</div></div></div>
-          <div class="col-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Top sector</div><div class="fw-semibold">{% if holding_sector_exposure.top_sector %}{{ holding_sector_exposure.top_sector.sector }}{% else %}—{% endif %}</div></div></div>
-        </div>
-        {% if holding_sector_exposure.rows %}
-          <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0">
-              <thead><tr><th>Sector</th><th>Value</th><th>Weight</th><th>Posture</th></tr></thead>
-              <tbody>
-                {% for row in holding_sector_exposure.rows|slice:":5" %}
-                  <tr>
-                    <td>{{ row.sector }}</td>
-                    <td>${{ row.market_value }}</td>
-                    <td>{% if row.weight_pct is not None %}{{ row.weight_pct }}%{% else %}—{% endif %}</td>
-                    <td>{% if row.cap_posture == "OVER" %}<span class="badge text-bg-danger">Over</span>{% elif row.cap_posture == "NEAR" %}<span class="badge text-bg-warning">Near</span>{% else %}<span class="badge text-bg-success">OK</span>{% endif %}</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        {% else %}
-          <div class="small text-muted">No open holdings yet.</div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="row g-3 mb-3">
-    <div class="col-lg-5">
-      <div class="card shadow-sm h-100">
-        <div class="card-body">
-          <h2 class="h5">Setup checklist</h2>
-          <ul class="list-group list-group-flush mb-3">
-            <li class="list-group-item d-flex justify-content-between px-0"><span>Active watchlist has active symbols</span><span>{% if setup_items.watchlist_ready %}✅{% else %}⚠️{% endif %}</span></li>
-            <li class="list-group-item d-flex justify-content-between px-0"><span>At least one symbol has 1d bars loaded</span><span>{% if data_ready_count %}✅{% else %}⚠️{% endif %}</span></li>
-            <li class="list-group-item d-flex justify-content-between px-0"><span>At least one active strategy config exists</span><span>{% if setup_items.strategy_ready %}✅{% else %}⚠️{% endif %}</span></li>
-            <li class="list-group-item d-flex justify-content-between px-0"><span>Signals have been generated</span><span>{% if setup_items.signals_ready %}✅{% else %}⚠️{% endif %}</span></li>
-            <li class="list-group-item d-flex justify-content-between px-0"><span>Journal feedback loop started</span><span>{% if setup_items.journal_ready %}✅{% else %}⚠️{% endif %}</span></li>
-          </ul>
-          {% if not setup_items.watchlist_ready or not setup_items.strategy_ready %}
-            <div class="alert alert-info small mb-0">
-              Recommended first-run command:<br>
-              <code>python manage.py ensure_default_setup --username {{ user.username }}</code>
-            </div>
-          {% elif ingestion_backlog_count %}
-            <div class="alert alert-info small mb-0">
-              Backfill the watchlist in controlled batches:<br>
-              <code>python manage.py ingest_watchlist_prices --username {{ user.username }} --max-symbols 25</code>
-            </div>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-    <div class="col-lg-7">
-      <div class="card shadow-sm h-100">
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-3">
-            <h2 class="h5 mb-0">Alert policy</h2>
-            <div class="small text-muted">Tune thresholds before buying more data</div>
-          </div>
-          <div class="row g-2 mb-3">
-            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Event threshold</div><div class="fw-semibold">{{ alert_policy.event_threshold|floatformat:2 }}/100</div></div></div>
-            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">State threshold</div><div class="fw-semibold">{{ alert_policy.state_threshold|floatformat:2 }}/100</div></div></div>
-            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">State-change only</div><div class="fw-semibold">{% if alert_policy.state_change_only %}On{% else %}Off{% endif %}</div></div></div>
-            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Max signal age</div><div class="fw-semibold">{{ alert_policy.max_age_minutes }} min</div></div></div>
-            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Cooldown</div><div class="fw-semibold">{{ alert_policy.cooldown_minutes }} min</div></div></div>
-            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Daily cap</div><div class="fw-semibold">{{ alert_policy.max_per_day }}</div></div></div>
-          </div>
-          <div class="small text-muted">Quick test: lower <code>ALERT_MIN_SCORE_EVENT</code> to 30–40 to prove Discord delivery, then raise it back after validation.</div>
-          <hr>
-          <div class="row g-2">
-            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Discord</div><div class="fw-semibold">{% if delivery_channels.discord_enabled %}Enabled{% else %}Off{% endif %}</div></div></div>
-            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Email</div><div class="fw-semibold">{% if delivery_channels.email_enabled %}Enabled{% else %}Off{% endif %}</div></div></div>
-            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Email recipient</div><div class="fw-semibold small">{{ delivery_channels.email_to|default:"not set" }}</div></div></div>
-          </div>
-          <div class="small text-muted mt-2">Automatic delivery is now channel-based. Discord handles fast pings, and email provides inbox/audit fallback when configured.</div>
-          <div class="small text-muted mt-1">Escalation delivery uses the same enabled channels. When delivery health degrades, the system can raise an operator escalation notice with a {{ delivery_channels.escalation_cooldown_minutes }} minute cooldown and then send a recovery notice after health returns with a {{ delivery_channels.recovery_cooldown_minutes }} minute cooldown.</div>
-          {% if delivery_health.in_drought %}
-            <div class="alert alert-warning small mt-3 mb-0">
-              <strong>Delivery drought:</strong> {{ delivery_health.drought_headline }}.
-              Run <code>python manage.py check_alert_delivery_health</code> and <code>python manage.py send_test_alert</code>.
-            </div>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="row g-3 mb-3">
-    <div class="col-lg-12">
-      <div class="card shadow-sm h-100">
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-3">
-            <h2 class="h5 mb-0">Delivery health</h2>
-            <div class="small text-muted">Trust surface for unattended alerting</div>
-          </div>
-          <div class="row g-2 mb-3">
-            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Health window</div><div class="fw-semibold">{{ delivery_health.window_hours }}h</div></div></div>
-            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Recent failures</div><div class="fw-semibold">{{ delivery_health.total_recent_failures }}</div></div></div>
-            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Drought policy</div><div class="fw-semibold">{{ delivery_health.drought_minutes }} min</div></div></div>
-            <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Latest success</div><div class="fw-semibold small">{% if delivery_health.latest_success_at %}{{ delivery_health.latest_success_at|date:"Y-m-d H:i" }}{% else %}never{% endif %}</div></div></div>
-          </div>
-          <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0">
-              <thead><tr><th>Channel</th><th>Status</th><th>Recent sent</th><th>Recent failed</th><th>Failure streak</th><th>Last success</th><th>Headline</th></tr></thead>
-              <tbody>
-                {% for item in delivery_health.channels %}
-                  <tr>
-                    <td>{{ item.channel }}</td>
-                    <td>
-                      {% if not item.enabled %}
-                        <span class="badge text-bg-secondary">disabled</span>
-                      {% elif item.healthy %}
-                        <span class="badge text-bg-success">healthy</span>
-                      {% else %}
-                        <span class="badge text-bg-warning">attention</span>
-                      {% endif %}
-                    </td>
-                    <td>{{ item.sent_count_window }}</td>
-                    <td>{{ item.failed_count_window }}</td>
-                    <td>{{ item.failure_streak }}</td>
-                    <td class="small">{% if item.last_success_at %}{{ item.last_success_at|date:"Y-m-d H:i" }}{% else %}never{% endif %}</td>
-                    <td class="small text-muted">{{ item.headline }}</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="row g-3 mb-3">
-    <div class="col-lg-7">
-      <div class="card shadow-sm h-100">
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-3">
-            <h2 class="h5 mb-0">Operator escalations</h2>
-            <div class="small text-muted">Automatic notices when alert delivery trust degrades</div>
-          </div>
-          <div class="row g-2 mb-3">
-            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Incident status</div><div class="fw-semibold">{% if delivery_channels.delivery_incident_open %}Open{% else %}Recovered / none open{% endif %}</div></div></div>
-            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Last escalation</div><div class="fw-semibold small">{% if delivery_channels.latest_delivery_escalation %}{{ delivery_channels.latest_delivery_escalation.created_at|date:"Y-m-d H:i" }}{% else %}never{% endif %}</div></div></div>
-            <div class="col-md-4"><div class="border rounded p-2 h-100"><div class="small text-muted">Last recovery</div><div class="fw-semibold small">{% if delivery_channels.latest_delivery_recovery %}{{ delivery_channels.latest_delivery_recovery.created_at|date:"Y-m-d H:i" }}{% else %}never{% endif %}</div></div></div>
-          </div>
-          {% if recent_operator_notifications %}
-            <div class="table-responsive">
-              <table class="table table-sm align-middle mb-0">
-                <thead><tr><th>When</th><th>Channel</th><th>Status</th><th>Reason</th><th>Headline</th></tr></thead>
-                <tbody>
-                  {% for item in recent_operator_notifications %}
-                    <tr>
-                      <td class="small">{{ item.created_at|date:"Y-m-d H:i" }}</td>
-                      <td>{{ item.channel }}</td>
-                      <td>
-                        {% if item.status == "SENT" %}
-                          <span class="badge text-bg-success">sent</span>
-                        {% elif item.status == "FAILED" %}
-                          <span class="badge text-bg-danger">failed</span>
-                        {% elif item.status == "DRY_RUN" %}
-                          <span class="badge text-bg-secondary">dry-run</span>
-                        {% else %}
-                          <span class="badge text-bg-warning">{{ item.status|lower }}</span>
-                        {% endif %}
-                      </td>
-                      <td class="small text-muted">{{ item.reason }}</td>
-                      <td class="small">{{ item.headline }}</td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <div class="text-muted">No operator escalation notices have been recorded yet.</div>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-    <div class="col-lg-5">
-      <div class="card shadow-sm h-100">
-        <div class="card-body">
-          <h2 class="h5 mb-3">Escalation runbook</h2>
-          <div class="small text-muted mb-2">Automatic trade alerts use Discord first and optional email second. Delivery-health escalations use the same enabled channels today.</div>
-          <ul class="small mb-0">
-            <li>Primary fast path: Discord webhook</li>
-            <li>Fallback / audit path: Email</li>
-            <li>SMS/Text: not implemented in this codebase yet</li>
-            <li>Manual test: <code>python manage.py send_test_alert</code></li>
-            <li>Escalation test: <code>python manage.py escalate_delivery_health --dry-run</code></li>
-            <li>Recovery test: <code>python manage.py notify_delivery_recovery --dry-run</code></li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="row g-3 mb-3">
-    <div class="col-lg-6">
-      <div class="card shadow-sm h-100">
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-3">
-            <h2 class="h5 mb-0">Alert tuning preview</h2>
-            <div class="small text-muted">Why recent NEW signals would or would not alert</div>
-          </div>
-          {% if tuning_preview %}
-            <div class="table-responsive">
-              <table class="table table-sm align-middle mb-0">
-                <thead><tr><th>Signal</th><th>Score</th><th>Threshold</th><th>Gap</th><th>Decision</th></tr></thead>
-                <tbody>
-                {% for item in tuning_preview %}
-                  <tr>
-                    <td><a href="{% url 'signals:detail' item.signal.pk %}">{{ item.signal.instrument.symbol }}</a> <span class="small text-muted">{{ item.signal.signal_label|default:item.signal.signal_kind }}</span></td>
-                    <td>{{ item.score_display }}</td>
-                    <td>{{ item.threshold_display }}</td>
-                    <td class="{% if item.explanation.score_gap >= 0 %}text-success{% else %}text-danger{% endif %}">{{ item.gap_display }}</td>
-                    <td>
-                      {% if item.explanation.eligible %}
-                        <span class="badge text-bg-success">eligible</span>
-                      {% else %}
-                        <span class="badge text-bg-secondary">{{ item.explanation.reason }}</span>
-                      {% endif %}
-                    </td>
-                  </tr>
-                {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <div class="text-muted">No NEW trade-plan-backed signals to preview yet.</div>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-    <div class="col-lg-6">
-      <div class="card shadow-sm h-100">
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-3">
-            <h2 class="h5 mb-0">Latest alert attempts</h2>
-            <div class="small text-muted">Most recent delivery decisions</div>
-          </div>
-          {% if latest_alerts %}
-            <div class="table-responsive">
-              <table class="table table-sm align-middle mb-0">
-                <thead><tr><th>Time</th><th>Symbol</th><th>Status</th><th>Reason</th></tr></thead>
-                <tbody>
-                  {% for delivery in latest_alerts %}
-                    <tr>
-                      <td class="text-nowrap">{{ delivery.created_at|date:"Y-m-d H:i" }}</td>
-                      <td><a href="{% url 'signals:detail' delivery.signal.pk %}">{{ delivery.signal.instrument.symbol }}</a></td>
-                      <td>{{ delivery.status }}</td>
-                      <td class="small text-muted">{{ delivery.reason|default:"—" }}</td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <div class="text-muted">No alert delivery history yet.</div>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="row g-3 mb-3">
-    <div class="col-lg-12">
-      <div class="card shadow-sm h-100">
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-3">
-            <h2 class="h5 mb-0">Failed alert attempts</h2>
-            <div class="small text-muted">Recent delivery failures that need operator attention</div>
-          </div>
-          {% if recent_failed_alerts %}
-            <div class="table-responsive">
-              <table class="table table-sm align-middle mb-0">
-                <thead><tr><th>Time</th><th>Channel</th><th>Symbol</th><th>Reason</th><th>Error</th></tr></thead>
-                <tbody>
-                  {% for delivery in recent_failed_alerts %}
-                    <tr>
-                      <td class="text-nowrap">{{ delivery.created_at|date:"Y-m-d H:i" }}</td>
-                      <td>{{ delivery.channel }}</td>
-                      <td><a href="{% url 'signals:detail' delivery.signal.pk %}">{{ delivery.signal.instrument.symbol }}</a></td>
-                      <td class="small text-muted">{{ delivery.reason|default:"—" }}</td>
-                      <td class="small text-muted">{{ delivery.error_message|default:"—"|truncatechars:120 }}</td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <div class="text-muted">No failed alert attempts recently.</div>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-  </div>
-
-
-  <div class="row g-3 mb-3">
-    <div class="col-lg-7">
-      <div class="card shadow-sm h-100">
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-3">
-            <h2 class="h5 mb-0">Alert queue preview</h2>
-            <div class="small text-muted">What would alert next, and what is blocking the rest</div>
-          </div>
-          {% if alert_queue_preview %}
-            <div class="table-responsive">
-              <table class="table table-sm align-middle mb-0">
-                <thead><tr><th>#</th><th>Signal</th><th>Score</th><th>Gap</th><th>Queue state</th></tr></thead>
-                <tbody>
-                {% for item in alert_queue_preview %}
-                  <tr>
-                    <td>{{ forloop.counter }}</td>
-                    <td>
-                      <a href="{% url 'signals:detail' item.signal.pk %}">{{ item.signal.instrument.symbol }}</a>
-                      <div class="small text-muted">{{ item.signal.direction }} · {{ item.signal.signal_label|default:item.signal.signal_kind }}</div>
-                    </td>
-                    <td>{{ item.score_display }}</td>
-                    <td class="{% if item.explanation.score_gap >= 0 %}text-success{% else %}text-danger{% endif %}">{{ item.gap_display }}</td>
-                    <td>
-                      {% if item.explanation.eligible %}
-                        <span class="badge text-bg-success">would alert</span>
-                      {% else %}
-                        <span class="badge text-bg-secondary">{{ item.explanation.reason }}</span>
-                      {% endif %}
-                    </td>
-                  </tr>
-                {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <div class="text-muted">No trade-plan-backed NEW signals are currently queued.</div>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-    <div class="col-lg-5">
-      <div class="card shadow-sm h-100">
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-3">
-            <h2 class="h5 mb-0">Highest-risk open positions</h2>
-            <div class="small text-muted">Ranked by deterioration, stop pressure, and trend flips</div>
-          </div>
-          {% if high_risk_positions %}
-            <div class="table-responsive">
-              <table class="table table-sm align-middle mb-0">
-                <thead><tr><th>Symbol</th><th>Risk score</th><th>PnL %</th><th>Headline</th></tr></thead>
-                <tbody>
-                {% for item in high_risk_positions %}
-                  <tr>
-                    <td><a href="{% url 'signals:detail' item.trade.signal.pk %}">{{ item.trade.signal.instrument.symbol }}</a></td>
-                    <td>{{ item.risk_score }}</td>
-                    <td>{{ item.pnl_pct|default:"—" }}</td>
-                    <td class="small text-muted">{{ item.headline }}</td>
-                  </tr>
-                {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <div class="text-muted">No open positions to rank yet.</div>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-  </div>
-
-
-  <div class="row g-3 mb-3">
-    <div class="col-lg-12">
-      <div class="card shadow-sm h-100">
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-3">
-            <h2 class="h5 mb-0">Next stock session queue</h2>
-            <div class="small text-muted">Stock signals blocked only because the market session is currently closed</div>
-          </div>
-          {% if next_session_queue %}
-            <div class="table-responsive">
-              <table class="table table-sm align-middle mb-0">
-                <thead><tr><th>#</th><th>Signal</th><th>Score</th><th>Gap</th><th>Status</th></tr></thead>
-                <tbody>
-                {% for item in next_session_queue %}
-                  <tr>
-                    <td>{{ forloop.counter }}</td>
-                    <td>
-                      <a href="{% url 'signals:detail' item.signal.pk %}">{{ item.signal.instrument.symbol }}</a>
-                      <div class="small text-muted">{{ item.signal.direction }} · {{ item.signal.signal_label|default:item.signal.signal_kind }}</div>
-                    </td>
-                    <td>{{ item.score_display }}</td>
-                    <td class="{% if item.explanation.score_gap >= 0 %}text-success{% else %}text-danger{% endif %}">{{ item.gap_display }}</td>
-                    <td><span class="badge text-bg-secondary">next session</span></td>
-                  </tr>
-                {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <div class="text-muted">No stock signals are currently waiting only on the next session open.</div>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="row g-3 mb-3">
-    <div class="col-lg-6">
-      <div class="card shadow-sm h-100">
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-3">
-            <h2 class="h5 mb-0">Review queue</h2>
-            <a class="small" href="{% url 'signals:list' %}?review_queue=1">Open full queue</a>
-          </div>
-          {% if review_queue %}
-            <div class="table-responsive">
-              <table class="table table-sm align-middle mb-0">
-                <thead><tr><th>Instrument</th><th>Type</th><th>Score</th><th>Generated</th></tr></thead>
-                <tbody>
-                {% for s in review_queue %}
-                  <tr>
-                    <td><a href="{% url 'signals:detail' s.pk %}">{{ s.instrument.symbol }}</a></td>
-                    <td>{{ s.signal_label|default:s.signal_kind }}</td>
-                    <td>{{ s.score|default:"—" }}</td>
-                    <td class="text-nowrap">{{ s.generated_at|date:"Y-m-d H:i" }}</td>
-                  </tr>
-                {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <div class="text-muted">No pending review items right now.</div>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-    <div class="col-lg-6">
-      <div class="card shadow-sm h-100">
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-3">
-            <h2 class="h5 mb-0">Recent evaluated outcomes</h2>
-            <div class="small text-muted">Lookahead outcomes for measured feedback</div>
-          </div>
-          {% if recent_outcomes %}
-            <div class="table-responsive">
-              <table class="table table-sm align-middle mb-0">
-                <thead><tr><th>Instrument</th><th>Label</th><th>Return %</th><th>MFE %</th><th>MAE %</th></tr></thead>
-                <tbody>
-                {% for o in recent_outcomes %}
-                  <tr>
-                    <td><a href="{% url 'signals:detail' o.signal.pk %}">{{ o.signal.instrument.symbol }}</a></td>
-                    <td>{{ o.outcome_label|default:o.status }}</td>
-                    <td>{{ o.return_pct|default:"—" }}</td>
-                    <td>{{ o.max_favorable_excursion_pct|default:"—" }}</td>
-                    <td>{{ o.max_adverse_excursion_pct|default:"—" }}</td>
-                  </tr>
-                {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <div class="text-muted">No evaluated outcomes yet. Run the outcome evaluation command after a few more bars print.</div>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="row g-3 mb-3">
-    <div class="col-12">
-      <div class="card shadow-sm">
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-3">
-            <h2 class="h5 mb-0">Top scored opportunities</h2>
-            <div class="small text-muted">Score model: trend + momentum + volume + volatility + quality</div>
-          </div>
-          {% if top_opportunities %}
-            <div class="row g-2 mb-3">
-              <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Fits all guardrails</div><div class="fw-semibold">{{ top_opportunity_guardrail_summary.OK|default:0 }}</div></div></div>
-              <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Near cap / cluster</div><div class="fw-semibold">{{ top_opportunity_guardrail_summary.NEAR|default:0 }}</div></div></div>
-              <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Over guardrails</div><div class="fw-semibold">{{ top_opportunity_guardrail_summary.OVER|default:0 }}</div></div></div>
-              <div class="col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Missing profile / plan</div><div class="fw-semibold">{{ top_opportunity_guardrail_summary.MISSING|default:0 }}</div></div></div>
-            </div>
-            <div class="table-responsive">
-              <table class="table table-sm align-middle mb-0">
-                <thead><tr><th>Instrument</th><th>Direction</th><th>Type</th><th>Score</th><th>Guardrails</th><th>Generated</th><th>Components</th></tr></thead>
-                <tbody>
-                {% for s in top_opportunities %}
-                  <tr>
-                    <td><a href="{% url 'signals:detail' s.pk %}">{{ s.instrument.symbol }}</a></td>
-                    <td>{{ s.direction }}</td>
-                    <td>{{ s.signal_label|default:s.signal_kind }}</td>
-                    <td>{{ s.score }}</td>
-                    <td>
-                      {% with g=top_opportunity_guardrails|get_item:s.pk %}
-                        {% if g.overall_posture == "OVER" %}<span class="badge text-bg-danger">Over</span>
-                        {% elif g.overall_posture == "NEAR" %}<span class="badge text-bg-warning">Near</span>
-                        {% elif g.overall_posture == "OK" %}<span class="badge text-bg-success">Fits</span>
-                        {% else %}<span class="badge text-bg-secondary">{{ g.overall_label }}</span>{% endif %}
-                        {% if g.sector_label %}<div class="small text-muted mt-1">{{ g.sector_label }}</div>{% endif %}
-                        <div class="small text-muted">Net {% if g.projected_net_exposure_pct is not None %}{{ g.projected_net_exposure_pct }}% / {{ g.max_net_exposure_pct }}%{% else %}—{% endif %}</div><div class="small text-muted">Corr {% if g.high_correlation_count is not None %}{{ g.high_correlation_count }}/{{ g.max_high_correlation_positions }}{% else %}—{% endif %}</div>
-                      {% endwith %}
-                    </td>
-                    <td class="text-nowrap">{{ s.generated_at|date:"Y-m-d H:i" }}</td>
-                    <td class="small text-muted">
-                      {% for key, value in s.score_components.items %}{{ key }}: {{ value }}{% if not forloop.last %} · {% endif %}{% endfor %}
-                    </td>
-                  </tr>
-                {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <div class="text-muted">No scored opportunities yet.</div>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="row g-3 mb-3">
-    <div class="col-lg-6">
-      <div class="card shadow-sm h-100">
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-3">
-            <h2 class="h5 mb-0">Open positions</h2>
-            <div class="small text-muted">Manual execution, automatic risk monitoring</div>
-          </div>
-          {% if open_positions %}
-            <div class="table-responsive">
-              <table class="table table-sm align-middle mb-0">
-                <thead><tr><th>Symbol</th><th>Dir</th><th>Entry</th><th>Status</th><th>PnL %</th></tr></thead>
-                <tbody>
-                {% for trade in open_positions %}
-                  <tr>
-                    <td><a href="{% url 'signals:detail' trade.signal.pk %}">{{ trade.signal.instrument.symbol }}</a></td>
-                    <td>{{ trade.signal.direction }}</td>
-                    <td>{{ trade.entry_price }}</td>
-                    <td>{{ trade.status }}</td>
-                    <td>{{ trade.pnl_pct|default:"—" }}</td>
-                  </tr>
-                {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <div class="text-muted">No open paper trades yet.</div>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-    <div class="col-lg-6">
-      <div class="card shadow-sm h-100">
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-3">
-            <h2 class="h5 mb-0">Trade stats</h2>
-            <div class="small text-muted">Built from closed paper trades</div>
-          </div>
-          <div class="row g-2">
-            <div class="col-6"><div class="border rounded p-2"><div class="small text-muted">Total</div><div class="fw-semibold">{{ trade_stats.total|default:0 }}</div></div></div>
-            <div class="col-6"><div class="border rounded p-2"><div class="small text-muted">Open</div><div class="fw-semibold">{{ trade_stats.open_count|default:0 }}</div></div></div>
-            <div class="col-6"><div class="border rounded p-2"><div class="small text-muted">Closed</div><div class="fw-semibold">{{ trade_stats.closed_count|default:0 }}</div></div></div>
-            <div class="col-6"><div class="border rounded p-2"><div class="small text-muted">Avg PnL %</div><div class="fw-semibold">{{ trade_stats.avg_pnl_pct|default:"—" }}</div></div></div>
-            <div class="col-6"><div class="border rounded p-2"><div class="small text-muted">Wins</div><div class="fw-semibold">{{ trade_stats.wins|default:0 }}</div></div></div>
-            <div class="col-6"><div class="border rounded p-2"><div class="small text-muted">Losses</div><div class="fw-semibold">{{ trade_stats.losses|default:0 }}</div></div></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
+  {# ── Collapsible: Operations & monitoring ──────────────────────── #}
   <div class="card shadow-sm mb-3">
-    <div class="card-body">
-      <div class="d-flex align-items-center justify-content-between mb-3">
-        <h2 class="h5 mb-0">Risk alerts</h2>
-        <div class="small text-muted">Negative-value monitoring for open positions</div>
+    <div class="card-header bg-white py-2 section-collapse-toggle collapsed" data-bs-toggle="collapse" data-bs-target="#opsSection">
+      <div class="d-flex align-items-center justify-content-between">
+        <span class="fw-semibold"><i class="bi bi-tools me-2 text-muted"></i>Operations &amp; monitoring</span>
+        <i class="bi bi-chevron-down text-muted"></i>
       </div>
-      {% if recent_position_alerts %}
-        <div class="table-responsive">
-          <table class="table table-sm align-middle mb-0">
-            <thead><tr><th>Time</th><th>Symbol</th><th>Type</th><th>Status</th><th>Reason</th></tr></thead>
-            <tbody>
-            {% for item in recent_position_alerts %}
-              <tr>
-                <td class="text-nowrap">{{ item.created_at|date:"Y-m-d H:i" }}</td>
-                <td><a href="{% url 'signals:detail' item.paper_trade.signal.pk %}">{{ item.paper_trade.signal.instrument.symbol }}</a></td>
-                <td>{{ item.alert_type }}</td>
-                <td>{{ item.status }}</td>
-                <td class="small text-muted">{{ item.reason|default:"—" }}</td>
-              </tr>
-            {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <div class="text-muted">No position-risk alerts yet.</div>
-      {% endif %}
     </div>
-  </div>
+    <div class="collapse" id="opsSection">
+      <div class="card-body">
 
-  <div class="card shadow-sm">
-    <div class="card-body">
-      <div class="d-flex align-items-center justify-content-between mb-3">
-        <h2 class="h5 mb-0">Today / Recent Signals</h2>
-      </div>
-      {% if signals %}
-        <div class="table-responsive">
+        {# Account risk posture #}
+        {% if account_risk_posture.rows %}
+        <h3 class="h6 text-muted mb-2">Account risk posture</h3>
+        <div class="small text-muted mb-2">{{ account_risk_posture.count }} accounts · {{ account_risk_posture.posture_counts.OVER|default:0 }} over · {{ account_risk_posture.posture_counts.NEAR|default:0 }} near cap</div>
+        <div class="table-responsive mb-3">
           <table class="table table-sm align-middle mb-0">
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Instrument</th>
-                <th>Asset</th>
-                <th>Strategy</th>
-                <th>TF</th>
-                <th>Dir</th>
-                <th>Type</th>
-                <th>Status</th>
-                <th>Score</th>
-              </tr>
-            </thead>
+            <thead><tr><th>Account</th><th>Posture</th><th>Deploy %</th><th>Issues</th></tr></thead>
             <tbody>
-              {% for s in signals %}
+              {% for row in account_risk_posture.rows|slice:":5" %}
                 <tr>
-                  <td class="text-nowrap">{{ s.generated_at|date:"Y-m-d H:i" }}</td>
-                  <td><a href="{% url 'signals:detail' s.pk %}">{{ s.instrument.symbol }}</a></td>
-                  <td>{{ s.instrument.asset_class }}</td>
-                  <td>{{ s.strategy.name }}</td>
-                  <td>{{ s.timeframe }}</td>
-                  <td>{{ s.direction }}</td>
-                  <td>{{ s.signal_label|default:s.signal_kind }}</td>
-                  <td>{{ s.status }}</td>
-                  <td>{{ s.score|default:"" }}</td>
+                  <td><div class="fw-semibold">{{ row.account_label }}</div><div class="small text-muted">${{ row.exposure.total_market_value }} tracked</div></td>
+                  <td>{% if row.overall_posture == "OVER" %}<span class="badge text-bg-danger">Over</span>{% elif row.overall_posture == "NEAR" %}<span class="badge text-bg-warning">Near</span>{% elif row.overall_posture == "NO_EQUITY" %}<span class="badge text-bg-secondary">No equity</span>{% else %}<span class="badge text-bg-success">OK</span>{% endif %}</td>
+                  <td>{% if row.deployment_pct is not None %}{{ row.deployment_pct }}%{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                  <td class="small {% if row.unresolved_count or row.missing_from_latest_import %}text-warning-emphasis{% else %}text-muted{% endif %}">{{ row.unresolved_count }} unresolved · {{ row.missing_from_latest_import }} missing</td>
                 </tr>
               {% endfor %}
             </tbody>
           </table>
         </div>
-      {% else %}
-        <div class="alert alert-info mb-0">No signals yet. Run a scan once you have instruments and price bars.</div>
-      {% endif %}
+        {% endif %}
+
+        {# Portfolio health + broker snapshot #}
+        <div class="row g-3 mb-3">
+          <div class="col-md-6">
+            <div class="border rounded p-3">
+              <div class="d-flex align-items-center justify-content-between mb-2">
+                <span class="fw-semibold small">Portfolio health score</span>
+                <a class="small" href="{% url 'portfolios:portfolio_health_score' %}">Open scorecard</a>
+              </div>
+              <div class="fs-4 fw-bold">{{ portfolio_health.overall_score }}</div>
+              <div class="small text-muted">{{ portfolio_health.overall_grade_label }} · {{ portfolio_health.attention_count }} account{% if portfolio_health.attention_count != 1 %}s{% endif %} need attention</div>
+              {% if portfolio_health.weakest_account %}<div class="small text-muted">Weakest: {{ portfolio_health.weakest_account.account_label }} ({{ portfolio_health.weakest_account.score }})</div>{% endif %}
+              {% if portfolio_health_history.latest %}<div class="small text-muted">Snapshot {{ portfolio_health_history.latest.created_at|date:"Y-m-d H:i" }}{% if portfolio_health_history.score_delta is not None %} · Δ {{ portfolio_health_history.score_delta }}{% endif %}</div>{% endif %}
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="border rounded p-3">
+              <div class="fw-semibold small mb-2">Broker snapshot drift</div>
+              {% if broker_snapshot_posture.latest %}
+                {% if broker_snapshot_posture.combined_latest_snapshot_count > 1 %}
+                  <div class="fs-4 fw-bold">{% if broker_snapshot_posture.combined_market_value_drift > 0 %}+{% endif %}${{ broker_snapshot_posture.combined_market_value_drift }}</div>
+                  <div class="small text-muted">{{ broker_snapshot_posture.combined_latest_snapshot_count }} accounts combined</div>
+                {% else %}
+                  <div class="fs-4 fw-bold">{% if broker_snapshot_posture.market_value_drift > 0 %}+{% endif %}${{ broker_snapshot_posture.market_value_drift }}</div>
+                  <div class="small text-muted">{{ broker_snapshot_posture.latest.as_of }}{% if broker_snapshot_posture.market_value_drift_pct is not None %} · {{ broker_snapshot_posture.market_value_drift_pct }}%{% endif %}</div>
+                {% endif %}
+                <div class="small mt-2"><a href="{% url 'portfolios:risk_settings' %}">Allocation controls</a></div>
+              {% else %}
+                <div class="text-muted small">No broker snapshot saved yet.</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        {# Stop discipline trends #}
+        {% if stop_discipline_trends.period_rows or stop_policy_timeliness.recent_30.count %}
+        <h3 class="h6 text-muted mb-2">Stop discipline</h3>
+        {% if stop_discipline_trends.period_rows %}
+          <div class="small {% if stop_discipline_trends.trend_direction == "DEGRADING" %}text-danger{% elif stop_discipline_trends.trend_direction == "IMPROVING" %}text-success{% else %}text-muted{% endif %} mb-1">{{ stop_discipline_trends.trend_label }}{% if stop_discipline_trends.hygiene_delta is not None %} · hygiene {{ stop_discipline_trends.hygiene_delta }} pts vs prior 30d{% endif %}</div>
+        {% endif %}
+        {% if stop_policy_timeliness.recent_30.count %}
+          <div class="small text-muted mb-1">{{ stop_policy_timeliness.recent_30.on_time_rate|default:"—" }}% on time · {{ stop_policy_timeliness.followup_summary.overdue|default:0 }} overdue · <a href="{% url 'portfolios:stop_policy_followup' %}">follow-up queue</a></div>
+        {% endif %}
+        {% endif %}
+
+        {# Alert delivery health #}
+        <h3 class="h6 text-muted mt-3 mb-2">Alert delivery health</h3>
+        <div class="row g-2 mb-2">
+          <div class="col-md-3"><div class="border rounded p-2"><div class="small text-muted">Window</div><div class="fw-semibold">{{ delivery_health.window_hours }}h</div></div></div>
+          <div class="col-md-3"><div class="border rounded p-2"><div class="small text-muted">Failures</div><div class="fw-semibold {% if delivery_health.total_recent_failures %}text-danger{% endif %}">{{ delivery_health.total_recent_failures }}</div></div></div>
+          <div class="col-md-3"><div class="border rounded p-2"><div class="small text-muted">Discord</div><div class="fw-semibold">{% if delivery_channels.discord_enabled %}On{% else %}Off{% endif %}</div></div></div>
+          <div class="col-md-3"><div class="border rounded p-2"><div class="small text-muted">Email</div><div class="fw-semibold">{% if delivery_channels.email_enabled %}On{% else %}Off{% endif %}</div></div></div>
+        </div>
+        {% if delivery_health.in_drought %}
+          <div class="alert alert-warning small mb-2"><strong>Delivery drought:</strong> {{ delivery_health.drought_headline }}. Run <code>python manage.py check_alert_delivery_health</code>.</div>
+        {% endif %}
+        {% if delivery_health.channels %}
+          <div class="table-responsive mb-3">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr><th>Channel</th><th>Status</th><th>Sent</th><th>Failed</th><th>Last success</th></tr></thead>
+              <tbody>
+                {% for item in delivery_health.channels %}
+                  <tr>
+                    <td>{{ item.channel }}</td>
+                    <td>{% if not item.enabled %}<span class="badge text-bg-secondary">disabled</span>{% elif item.healthy %}<span class="badge text-bg-success">healthy</span>{% else %}<span class="badge text-bg-warning">attention</span>{% endif %}</td>
+                    <td>{{ item.sent_count_window }}</td>
+                    <td>{{ item.failed_count_window }}</td>
+                    <td class="small">{% if item.last_success_at %}{{ item.last_success_at|date:"M d H:i" }}{% else %}never{% endif %}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+
+        {# Alert tuning + latest alerts side by side #}
+        <div class="row g-3 mb-3">
+          <div class="col-lg-6">
+            <h3 class="h6 text-muted mb-2">Alert tuning preview</h3>
+            {% if tuning_preview %}
+              <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                  <thead><tr><th>Signal</th><th>Score</th><th>Gap</th><th>Decision</th></tr></thead>
+                  <tbody>
+                  {% for item in tuning_preview %}
+                    <tr>
+                      <td><a href="{% url 'signals:detail' item.signal.pk %}">{{ item.signal.instrument.symbol }}</a> <span class="small text-muted">{{ item.signal.signal_label|default:item.signal.signal_kind }}</span></td>
+                      <td>{{ item.score_display }}</td>
+                      <td class="{% if item.explanation.score_gap >= 0 %}text-success{% else %}text-danger{% endif %}">{{ item.gap_display }}</td>
+                      <td>{% if item.explanation.eligible %}<span class="badge text-bg-success">eligible</span>{% else %}<span class="badge text-bg-secondary">{{ item.explanation.reason }}</span>{% endif %}</td>
+                    </tr>
+                  {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% else %}<div class="text-muted small">No NEW signals to preview.</div>{% endif %}
+          </div>
+          <div class="col-lg-6">
+            <h3 class="h6 text-muted mb-2">Latest alert attempts</h3>
+            {% if latest_alerts %}
+              <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                  <thead><tr><th>Time</th><th>Symbol</th><th>Status</th><th>Reason</th></tr></thead>
+                  <tbody>
+                    {% for delivery in latest_alerts %}
+                      <tr>
+                        <td class="text-nowrap small">{{ delivery.created_at|date:"M d H:i" }}</td>
+                        <td><a href="{% url 'signals:detail' delivery.signal.pk %}">{{ delivery.signal.instrument.symbol }}</a></td>
+                        <td>{{ delivery.status }}</td>
+                        <td class="small text-muted">{{ delivery.reason|default:"—" }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% else %}<div class="text-muted small">No alert history yet.</div>{% endif %}
+          </div>
+        </div>
+
+        {# Failed alerts #}
+        {% if recent_failed_alerts %}
+        <h3 class="h6 text-muted mb-2">Failed alert attempts</h3>
+        <div class="table-responsive mb-3">
+          <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>Time</th><th>Channel</th><th>Symbol</th><th>Error</th></tr></thead>
+            <tbody>
+              {% for delivery in recent_failed_alerts %}
+                <tr>
+                  <td class="small text-nowrap">{{ delivery.created_at|date:"M d H:i" }}</td>
+                  <td>{{ delivery.channel }}</td>
+                  <td><a href="{% url 'signals:detail' delivery.signal.pk %}">{{ delivery.signal.instrument.symbol }}</a></td>
+                  <td class="small text-muted">{{ delivery.error_message|default:delivery.reason|default:"—"|truncatechars:100 }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+
+        {# Setup checklist #}
+        <h3 class="h6 text-muted mt-3 mb-2">Setup checklist</h3>
+        <ul class="list-group list-group-flush mb-2">
+          <li class="list-group-item d-flex justify-content-between px-0 py-1"><span class="small">Watchlist has active symbols</span><span>{% if setup_items.watchlist_ready %}✅{% else %}⚠️{% endif %}</span></li>
+          <li class="list-group-item d-flex justify-content-between px-0 py-1"><span class="small">At least one symbol has 1d bars</span><span>{% if data_ready_count %}✅{% else %}⚠️{% endif %}</span></li>
+          <li class="list-group-item d-flex justify-content-between px-0 py-1"><span class="small">Active strategy config exists</span><span>{% if setup_items.strategy_ready %}✅{% else %}⚠️{% endif %}</span></li>
+          <li class="list-group-item d-flex justify-content-between px-0 py-1"><span class="small">Signals have been generated</span><span>{% if setup_items.signals_ready %}✅{% else %}⚠️{% endif %}</span></li>
+          <li class="list-group-item d-flex justify-content-between px-0 py-1"><span class="small">Journal feedback loop started</span><span>{% if setup_items.journal_ready %}✅{% else %}⚠️{% endif %}</span></li>
+        </ul>
+        {% if not setup_items.watchlist_ready or not setup_items.strategy_ready %}
+          <div class="alert alert-info small mb-0">First-run: <code>python manage.py ensure_default_setup --username {{ user.username }}</code></div>
+        {% elif ingestion_backlog_count %}
+          <div class="alert alert-info small mb-0">Backfill: <code>python manage.py ingest_watchlist_prices --username {{ user.username }} --max-symbols 25</code></div>
+        {% endif %}
+
+      </div>
     </div>
   </div>
+
 {% endblock %}

@@ -5,45 +5,98 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}Trading Advisor{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+      .nav-divider { width: 1px; background: rgba(255,255,255,.2); margin: 0 .25rem; }
+      .navbar-text { opacity: .5; }
+      .stat-card { transition: box-shadow .15s; }
+      .stat-card:hover { box-shadow: 0 .25rem .75rem rgba(0,0,0,.12) !important; }
+      .section-collapse-toggle { cursor: pointer; user-select: none; }
+      .section-collapse-toggle .bi-chevron-down { transition: transform .2s; }
+      .section-collapse-toggle.collapsed .bi-chevron-down { transform: rotate(-90deg); }
+    </style>
   </head>
   <body class="bg-light">
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark py-2">
       <div class="container">
-        <a class="navbar-brand" href="{% url 'dashboard:home' %}">Trading Advisor</a>
-        <div class="d-flex gap-2 align-items-center">
-          {% if user.is_authenticated %}
-            <a class="btn btn-sm btn-outline-light" href="{% url 'dashboard:home' %}">Dashboard</a>
-            <a class="btn btn-sm btn-outline-light" href="{% url 'signals:list' %}">Signals</a>
-            <a class="btn btn-sm btn-outline-light" href="{% url 'dashboard:data_freshness' %}">Freshness</a>
-            <a class="btn btn-sm btn-outline-light" href="{% url 'dashboard:analytics' %}">Analytics</a>
-            <a class="btn btn-sm btn-outline-light" href="{% url 'portfolios:holdings' %}">Holdings</a>
-            <a class="btn btn-sm btn-outline-light" href="{% url 'portfolios:watchlist' %}">Watchlist</a>
-            <a class="btn btn-sm btn-outline-light" href="{% url 'portfolios:risk_settings' %}">Allocation</a>
-            <a class="btn btn-sm btn-outline-light" href="{% url 'portfolios:ops_command_center' %}">Ops</a>
-            <a class="btn btn-sm btn-outline-light" href="{% url 'journal:list' %}">Journal</a>
-            {% if active_watchlist %}<span class="navbar-text text-white-50 small">WL: {{ active_watchlist.name }}</span>{% endif %}
-            <span class="navbar-text text-white-50 small">{{ user.get_username }}</span>
+        <a class="navbar-brand fw-bold" href="{% url 'dashboard:home' %}">
+          <i class="bi bi-graph-up-arrow me-1"></i>Trading Advisor
+        </a>
+        {% if user.is_authenticated %}
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="mainNav">
+          <ul class="navbar-nav me-auto gap-1">
+            <li class="nav-item">
+              <a class="nav-link px-2 {% block nav_dashboard %}{% endblock %}" href="{% url 'dashboard:home' %}">
+                <i class="bi bi-speedometer2 me-1"></i>Dashboard
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link px-2 {% block nav_signals %}{% endblock %}" href="{% url 'signals:list' %}">
+                <i class="bi bi-lightning-charge me-1"></i>Signals
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link px-2 {% block nav_holdings %}{% endblock %}" href="{% url 'portfolios:holdings' %}">
+                <i class="bi bi-briefcase me-1"></i>Holdings
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link px-2 {% block nav_watchlist %}{% endblock %}" href="{% url 'portfolios:watchlist' %}">
+                <i class="bi bi-bookmark-star me-1"></i>Watchlist
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link px-2 {% block nav_journal %}{% endblock %}" href="{% url 'journal:list' %}">
+                <i class="bi bi-journal-text me-1"></i>Journal
+              </a>
+            </li>
+            <li class="nav-item dropdown">
+              <a class="nav-link px-2 dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                <i class="bi bi-gear me-1"></i>More
+              </a>
+              <ul class="dropdown-menu dropdown-menu-dark">
+                <li><a class="dropdown-item" href="{% url 'dashboard:analytics' %}"><i class="bi bi-bar-chart me-2"></i>Analytics</a></li>
+                <li><a class="dropdown-item" href="{% url 'dashboard:data_freshness' %}"><i class="bi bi-database-check me-2"></i>Data freshness</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{% url 'portfolios:risk_settings' %}"><i class="bi bi-sliders me-2"></i>Allocation controls</a></li>
+                <li><a class="dropdown-item" href="{% url 'portfolios:ops_command_center' %}"><i class="bi bi-terminal me-2"></i>Ops</a></li>
+              </ul>
+            </li>
+          </ul>
+          <div class="d-flex align-items-center gap-2">
+            {% if active_watchlist %}
+              <span class="navbar-text small"><i class="bi bi-bookmark me-1"></i>{{ active_watchlist.name }}</span>
+            {% endif %}
+            <span class="navbar-text small">{{ user.get_username }}</span>
             <form method="post" action="{% url 'logout' %}" class="d-inline mb-0">
               {% csrf_token %}
               <button type="submit" class="btn btn-sm btn-outline-light">Logout</button>
             </form>
-          {% else %}
-            <a class="btn btn-sm btn-outline-light" href="{% url 'login' %}">Login</a>
-          {% endif %}
+          </div>
         </div>
+        {% else %}
+          <a class="btn btn-sm btn-outline-light" href="{% url 'login' %}">Login</a>
+        {% endif %}
       </div>
     </nav>
 
     <main class="container py-4">
       {% if messages %}
         {% for message in messages %}
-          <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+          <div class="alert alert-{{ message.tags }} alert-dismissible fade show py-2" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
         {% endfor %}
       {% endif %}
 
-      <div class="alert alert-warning">
-        <strong>Disclaimer:</strong> This app is educational decision-support software. It does not place trades.
-        You are responsible for any trading decisions and risk of loss.
+      <div class="alert alert-warning alert-dismissible fade show py-2 small mb-3" role="alert">
+        <i class="bi bi-info-circle me-1"></i>
+        <strong>Disclaimer:</strong> Educational decision-support only. Does not place trades. You are responsible for all trading decisions and risk.
+        <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert"></button>
       </div>
 
       {% block content %}{% endblock %}

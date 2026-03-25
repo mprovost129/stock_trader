@@ -2,46 +2,126 @@
 {% load dashboard_extras %}
 
 {% block title %}Held Positions{% endblock %}
+{% block nav_holdings %}active{% endblock %}
 
 {% block content %}
 <div class="d-flex align-items-center justify-content-between mb-3">
   <div>
     <h1 class="h3 mb-1">Held Positions</h1>
-    <div class="text-muted small">Tell the app what you actually bought so it can warn you when the thesis weakens and give you a usable sell recommendation.</div>
+    <div class="text-muted small">${{ exposure.total_market_value|default:0 }} market value · {{ summary.total_open|default:0 }} open · {% if exposure.net_exposure_pct is not None %}{{ exposure.net_exposure_pct }}% net exp.{% else %}no equity set{% endif %}</div>
   </div>
-  <div class="d-flex gap-2">
-    <form method="post" action="{% url 'portfolios:holdings_refresh' %}">{% csrf_token %}<button class="btn btn-sm btn-outline-primary">Refresh prices</button></form>
+  <div class="d-flex gap-2 flex-wrap">
+    <form method="post" action="{% url 'portfolios:holdings_refresh' %}">{% csrf_token %}<button class="btn btn-sm btn-outline-primary"><i class="bi bi-arrow-clockwise me-1"></i>Refresh prices</button></form>
     <form method="post" action="{% url 'portfolios:holding_check_now' %}">{% csrf_token %}<button class="btn btn-sm btn-outline-primary">Check now</button></form>
-    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holding_import' %}">Import CSV</a>
     <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings_performance' %}">Performance</a>
-    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings_sector_exposure' %}">Sector exposure</a>
-    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:risk_settings' %}">Allocation controls</a>
-    <a class="btn btn-sm btn-primary" href="{% url 'portfolios:holding_add' %}">Add position</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings_sector_exposure' %}">Sector</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holding_import' %}">Import</a>
+    <a class="btn btn-sm btn-primary" href="{% url 'portfolios:holding_add' %}"><i class="bi bi-plus me-1"></i>Add position</a>
   </div>
 </div>
 
-<div class="row g-3 mb-3">
-  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Held market value</div><div class="display-6">${{ exposure.total_market_value|default:0 }}</div></div></div></div>
-  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Gross exposure</div><div class="display-6">{% if exposure.gross_exposure_pct is not None %}{{ exposure.gross_exposure_pct }}%{% else %}—{% endif %}</div></div></div></div>
-  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Net exposure</div><div class="display-6">{% if exposure.net_exposure_pct is not None %}{{ exposure.net_exposure_pct }}%{% else %}—{% endif %}</div><div class="small text-muted mt-2">{% if exposure.max_net_exposure_pct is not None %}Cap {{ exposure.max_net_exposure_pct }}%{% else %}No cap set{% endif %}</div></div></div></div>
-  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Open holdings</div><div class="display-6">{{ summary.total_open|default:0 }}</div></div></div></div>
-  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Sell now</div><div class="display-6">{{ summary.sell_now|default:0 }}</div></div></div></div>
-  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Review now</div><div class="display-6">{{ summary.review_now|default:0 }}</div></div></div></div>
-  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Trim / exit</div><div class="display-6">{{ summary.trim_or_exit|default:0 }}</div></div></div></div>
-  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Missing from latest import</div><div class="display-6">{{ summary.missing_from_latest_import|default:0 }}</div><div class="small text-muted mt-2">Needs reconciliation review</div></div></div></div>
-  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Over risk guardrails</div><div class="display-6">{{ holding_risk_guardrails.over_count|default:0 }}</div><div class="small text-muted mt-2">Missing stop, stop too wide, stop broken, or urgent drawdown</div></div></div></div>
-  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Missing stops</div><div class="display-6">{{ holding_risk_guardrails.missing_stop_count|default:0 }}</div><div class="small text-muted mt-2">Explicit stop discipline gaps</div></div></div></div>
-  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Near stop</div><div class="display-6">{{ holding_risk_guardrails.near_stop_count|default:0 }}</div><div class="small text-muted mt-2">May need action soon</div></div></div></div>
+{# ── Quick-jump action queue ─────────────────────────────────────── #}
+<div class="d-flex flex-wrap gap-2 mb-3">
+  <a class="btn btn-sm {% if not status_filter and not recommendation_filter %}btn-secondary{% else %}btn-outline-secondary{% endif %}" href="{% url 'portfolios:holdings' %}">All</a>
+  <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}?status=OPEN">Open positions</a>
+  {% if summary.sell_now %}<a class="btn btn-sm btn-danger" href="{% url 'portfolios:holdings' %}?status=OPEN&recommendation=SELL_NOW">{{ summary.sell_now }} sell now</a>{% endif %}
+  {% if summary.review_now %}<a class="btn btn-sm btn-warning" href="{% url 'portfolios:holdings' %}?status=OPEN&recommendation=REVIEW_URGENT">{{ summary.review_now }} review urgent</a>{% endif %}
+  {% if summary.trim_or_exit %}<a class="btn btn-sm btn-outline-info" href="{% url 'portfolios:holdings' %}?status=OPEN&recommendation=TRIM_OR_EXIT">{{ summary.trim_or_exit }} trim/exit</a>{% endif %}
+  {% if summary.missing_from_latest_import %}<a class="btn btn-sm btn-outline-warning" href="{% url 'portfolios:holdings' %}?status=OPEN&reconciliation=MISSING_IMPORT">{{ summary.missing_from_latest_import }} missing import</a>{% endif %}
+  {% if holding_risk_guardrails.missing_stop_count %}<a class="btn btn-sm btn-outline-danger" href="{% url 'portfolios:holdings' %}?status=OPEN">{{ holding_risk_guardrails.missing_stop_count }} missing stops</a>{% endif %}
 </div>
 
-<div class="card shadow-sm mb-3">
-  <div class="card-body">
-    <div class="d-flex align-items-center justify-content-between mb-3">
-      <div>
-        <h2 class="h5 mb-1">Holding filters</h2>
-        <div class="text-muted small">Narrow owned positions by current price band, recommendation bucket, source, and open/closed state.</div>
+{# ── Metrics strip ───────────────────────────────────────────────── #}
+<div class="row g-2 mb-3">
+  <div class="col-6 col-md-3">
+    <div class="card shadow-sm stat-card h-100">
+      <div class="card-body py-2 px-3">
+        <div class="text-muted small">Market value</div>
+        <div class="fs-4 fw-bold">${{ exposure.total_market_value|default:0 }}</div>
+        <div class="small text-muted">{% if exposure.gross_exposure_pct is not None %}{{ exposure.gross_exposure_pct }}% gross{% else %}no equity set{% endif %}</div>
       </div>
     </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card shadow-sm stat-card h-100">
+      <div class="card-body py-2 px-3">
+        <div class="text-muted small">Action queue</div>
+        <div class="fs-4 fw-bold {% if summary.sell_now %}text-danger{% endif %}">{{ summary.sell_now|default:0 }} <span class="fs-6 text-muted fw-normal">sell</span></div>
+        <div class="small text-muted">{{ summary.review_now|default:0 }} review · {{ summary.trim_or_exit|default:0 }} trim</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card shadow-sm stat-card h-100">
+      <div class="card-body py-2 px-3">
+        <div class="text-muted small">Risk guardrails</div>
+        <div class="fs-4 fw-bold {% if holding_risk_guardrails.over_count %}text-danger{% endif %}">{{ holding_risk_guardrails.over_count|default:0 }}</div>
+        <div class="small text-muted">{{ holding_risk_guardrails.missing_stop_count|default:0 }} missing · {{ holding_risk_guardrails.near_stop_count|default:0 }} near stop</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card shadow-sm stat-card h-100">
+      <div class="card-body py-2 px-3">
+        <div class="text-muted small">Net exposure</div>
+        <div class="fs-4 fw-bold">{% if exposure.net_exposure_pct is not None %}{{ exposure.net_exposure_pct }}%{% else %}—{% endif %}</div>
+        <div class="small text-muted">{% if exposure.max_net_exposure_pct is not None %}cap {{ exposure.max_net_exposure_pct }}%{% else %}no cap set{% endif %}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Urgent positions (shown only when there are action items) ────── #}
+{% if summary.urgent_snapshots %}
+<div class="card shadow-sm mb-3 border-danger-subtle">
+  <div class="card-header bg-danger-subtle py-2">
+    <h2 class="h6 mb-0 text-danger-emphasis"><i class="bi bi-exclamation-triangle-fill me-2"></i>Positions needing attention</h2>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-light"><tr><th>Symbol</th><th>Recommendation</th><th>Last price</th><th>PnL %</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          {% for snap in summary.urgent_snapshots %}
+          <tr>
+            <td class="fw-semibold">{{ snap.position.instrument.symbol }}</td>
+            <td>
+              {% if snap.recommendation_code == 'SELL_NOW' %}<span class="badge text-bg-danger">{{ snap.recommendation_label }}</span>
+              {% elif snap.recommendation_code == 'REVIEW_URGENT' %}<span class="badge text-bg-warning">{{ snap.recommendation_label }}</span>
+              {% elif snap.recommendation_code == 'TRIM_OR_EXIT' %}<span class="badge text-bg-info">{{ snap.recommendation_label }}</span>
+              {% else %}<span class="badge text-bg-secondary">{{ snap.recommendation_label }}</span>{% endif %}
+            </td>
+            <td>{{ snap.current_price|default:'—' }}</td>
+            <td class="{% if snap.pnl_pct is not None and snap.pnl_pct < 0 %}text-danger{% elif snap.pnl_pct is not None %}text-success{% endif %}">{% if snap.pnl_pct is not None %}{{ snap.pnl_pct }}%{% else %}—{% endif %}</td>
+            <td class="small text-muted">{{ snap.status_label }}</td>
+            <td><a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:holding_detail' snap.position.pk %}">Review</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="card shadow-sm mb-3">
+  <div class="card-header bg-white py-2 section-collapse-toggle {% if not min_price and not max_price and not recommendation_filter and not source_filter and not account_filter and not reconciliation_filter %}collapsed{% endif %}" data-bs-toggle="collapse" data-bs-target="#holdingsFilterPanel">
+    <div class="d-flex align-items-center justify-content-between">
+      <span class="fw-semibold small">
+        <i class="bi bi-funnel me-2 text-muted"></i>Filters
+        {% if min_price or max_price or recommendation_filter or status_filter or source_filter or account_filter or reconciliation_filter %}<span class="badge text-bg-primary ms-1">active</span>{% endif %}
+        {% if active_preset %}<span class="badge text-bg-secondary ms-1">{{ active_preset.name }}</span>{% endif %}
+      </span>
+      <div class="d-flex align-items-center gap-2">
+        {% if min_price or max_price or recommendation_filter or status_filter or source_filter or account_filter or reconciliation_filter %}
+          <a class="btn btn-sm btn-outline-secondary py-0" href="{% url 'portfolios:holdings' %}" onclick="event.stopPropagation()">Clear</a>
+        {% endif %}
+        <i class="bi bi-chevron-down text-muted"></i>
+      </div>
+    </div>
+  </div>
+  <div class="collapse {% if min_price or max_price or recommendation_filter or status_filter or source_filter or account_filter or reconciliation_filter %}show{% endif %}" id="holdingsFilterPanel">
+  <div class="card-body">
     <form method="get" class="row g-2 align-items-end">
       {% if active_preset %}<input type="hidden" name="preset" value="{{ active_preset.pk }}">{% endif %}
       <div class="col-sm-3 col-lg-2">
@@ -98,33 +178,16 @@
         </select>
       </div>
       <div class="col-sm-auto">
-        <button class="btn btn-sm btn-primary">Apply filters</button>
+        <button class="btn btn-sm btn-primary">Apply</button>
       </div>
       <div class="col-sm-auto">
         <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}">Clear</a>
       </div>
     </form>
-    {% if min_price or max_price or recommendation_filter or status_filter or source_filter or account_filter or reconciliation_filter %}
-      <div class="small text-muted mt-2">
-        Active filters:
-        price {% if min_price %}${{ min_price }}{% else %}any{% endif %} to {% if max_price %}${{ max_price }}{% else %}any{% endif %};
-        recommendation {{ recommendation_filter|default:'any' }};
-        status {{ status_filter|default:'any' }};
-        source {{ source_filter|default:'any' }};
-        account {{ account_filter|default:'any' }};
-        reconciliation {{ reconciliation_filter|default:'any' }}.
-        {% if active_preset %}<span class="ms-2">Preset: <strong>{{ active_preset.name }}</strong></span>{% endif %}
-      </div>
-    {% endif %}
     {% if filter_error %}
       <div class="alert alert-warning py-2 mt-3 mb-0">{{ filter_error }}</div>
     {% endif %}
-    <div class="d-flex flex-wrap gap-2 mt-3">
-      <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}?status=OPEN&recommendation=SELL_NOW">Sell now queue</a>
-      <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}?status=OPEN&recommendation=REVIEW_URGENT">Urgent review queue</a>
-      <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}?status=OPEN&source=IMPORT">Imported open holdings</a>
-      <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}?status=OPEN&reconciliation=MISSING_IMPORT">Missing from latest import</a>
-    </div>
+  </div>
   </div>
 </div>
 
@@ -185,101 +248,44 @@
   </div>
 </div>
 
-<div class="card shadow-sm mb-3">
-  <div class="card-body">
-    <div class="d-flex align-items-center justify-content-between mb-3">
-      <div>
-        <h2 class="h5 mb-1">Urgent queue</h2>
-        <div class="text-muted small">Open holdings sorted by strongest recommendation first.</div>
-      </div>
-    </div>
-    {% if summary.urgent_snapshots %}
-      <div class="table-responsive">
-        <table class="table table-sm align-middle mb-0">
-          <thead><tr><th>Symbol</th><th>Recommendation</th><th>Last</th><th>PnL %</th><th>Reason</th><th></th></tr></thead>
-          <tbody>
-          {% for snap in summary.urgent_snapshots %}
-            <tr>
-              <td>{{ snap.position.instrument.symbol }}</td>
-              <td>
-                {% if snap.recommendation_code == 'SELL_NOW' %}<span class="badge text-bg-danger">{{ snap.recommendation_label }}</span>
-                {% elif snap.recommendation_code == 'REVIEW_URGENT' %}<span class="badge text-bg-warning">{{ snap.recommendation_label }}</span>
-                {% elif snap.recommendation_code == 'TRIM_OR_EXIT' %}<span class="badge text-bg-success">{{ snap.recommendation_label }}</span>
-                {% elif snap.recommendation_code == 'REVIEW' %}<span class="badge text-bg-secondary">{{ snap.recommendation_label }}</span>
-                {% else %}<span class="badge text-bg-success">{{ snap.recommendation_label }}</span>{% endif %}
-              </td>
-              <td>{{ snap.current_price|default:"—" }}</td>
-              <td>{% if snap.pnl_pct is not None %}{{ snap.pnl_pct }}%{% else %}—{% endif %}</td>
-              <td class="small text-muted">{{ snap.recommendation_reason }}</td>
-              <td><a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:holding_detail' snap.position.pk %}">Review</a></td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <div class="text-muted">No open held positions yet.</div>
-    {% endif %}
-  </div>
-</div>
 
 <div class="card shadow-sm">
   <div class="card-body">
     {% if positions %}
       <div class="table-responsive">
-        <table class="table table-sm align-middle mb-0">
-          <thead><tr><th>Symbol</th><th>Account</th><th>Watchlist</th><th>Status</th><th>Qty</th><th>Entry</th><th>Last</th><th>Market value</th><th>Weight</th><th>PnL %</th><th>Health</th><th>Recommendation</th><th>Action</th></tr></thead>
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Symbol</th>
+              <th>Account</th>
+              <th>PnL % · Price</th>
+              <th>Recommendation</th>
+              <th>Health</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
           <tbody>
           {% for position in positions %}
-            <tr>
-              <td>{{ position.instrument.symbol }}</td>
-              <td>{% if position.account_label %}{{ position.account_label }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            <tr {% if position.missing_from_latest_import %}class="table-warning"{% endif %}>
               <td>
-                {% if position.instrument_id in watchlist_instrument_ids %}
-                  <form method="post" action="{% url 'portfolios:watchlist_remove_instrument' position.instrument_id %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                    <button class="btn btn-sm btn-outline-danger">Remove</button>
-                  </form>
-                {% else %}
-                  <form method="post" action="{% url 'portfolios:watchlist_add_instrument' position.instrument_id %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                    <button class="btn btn-sm btn-outline-primary">Add</button>
-                  </form>
-                {% endif %}
+                <div class="fw-semibold"><a href="{% url 'portfolios:holding_detail' position.pk %}" class="text-decoration-none">{{ position.instrument.symbol }}</a></div>
+                <div class="small text-muted">{{ position.quantity }} shares · entry {{ position.average_entry_price }}</div>
+                {% if position.missing_from_latest_import %}<div class="small text-warning-emphasis">⚠ missing from import</div>{% endif %}
+              </td>
+              <td class="small">
+                {% if position.account_label %}{{ position.account_label }}{% else %}<span class="text-muted">—</span>{% endif %}
+                {% if position.status == 'CLOSED' %}<div><span class="badge text-bg-secondary">closed</span></div>{% endif %}
               </td>
               <td>
-                {{ position.status }}
-                {% if position.status == 'OPEN' and position.missing_from_latest_import %}
-                  <div><span class="badge text-bg-warning mt-1">missing from latest import</span></div>
-                {% endif %}
-              </td>
-              <td>{{ position.quantity }}</td>
-              <td>{{ position.average_entry_price }}</td>
-              <td>{% if position.display_price is not None %}{{ position.display_price }}{% else %}—{% endif %}</td>
-              <td>{% if exposure.market_values|get_item:position.id is not None %}${{ exposure.market_values|get_item:position.id }}{% else %}—{% endif %}</td>
-              <td>{% if exposure.weights|get_item:position.id is not None %}{{ exposure.weights|get_item:position.id }}%{% else %}—{% endif %}</td>
-              <td>{% if position.pnl_pct is not None %}{{ position.pnl_pct }}%{% else %}—{% endif %}</td>
-              <td>
-                {% if position.status == 'CLOSED' %}
-                  <span class="badge text-bg-secondary">closed</span>
-                {% else %}
-                  {% with snap=snapshot_map|get_item:position.id %}
-                    {% if snap.stop_breached or snap.thesis_broken %}<span class="badge text-bg-danger">{{ snap.status_label }}</span>
-                    {% elif snap.deteriorating or snap.warning_drawdown %}<span class="badge text-bg-warning">{{ snap.status_label }}</span>
-                    {% elif snap.target_reached %}<span class="badge text-bg-success">{{ snap.status_label }}</span>
-                    {% else %}<span class="badge text-bg-success">healthy</span>{% endif %}
-                    <div class="mt-1">{% if snap.risk_guardrail_posture == 'OVER' %}<span class="badge text-bg-danger">{{ snap.risk_guardrail_label }}</span>{% elif snap.risk_guardrail_posture == 'NEAR' %}<span class="badge text-bg-warning">{{ snap.risk_guardrail_label }}</span>{% else %}<span class="badge text-bg-success">{{ snap.risk_guardrail_label }}</span>{% endif %}</div>
-                  {% endwith %}
-                {% endif %}
+                <div class="fw-semibold {% if position.pnl_pct is not None and position.pnl_pct < 0 %}text-danger{% elif position.pnl_pct is not None %}text-success{% endif %}">{% if position.pnl_pct is not None %}{{ position.pnl_pct }}%{% else %}—{% endif %}</div>
+                <div class="small text-muted">{% if position.display_price is not None %}{{ position.display_price }}{% else %}—{% endif %} · {% if exposure.market_values|get_item:position.id is not None %}${{ exposure.market_values|get_item:position.id }}{% else %}—{% endif %}{% if exposure.weights|get_item:position.id is not None %} · {{ exposure.weights|get_item:position.id }}%{% endif %}</div>
               </td>
               <td>
                 {% if position.status == 'OPEN' %}
                   {% with snap=snapshot_map|get_item:position.id %}
                     {% if snap.recommendation_code == 'SELL_NOW' %}<span class="badge text-bg-danger">{{ snap.recommendation_label }}</span>
                     {% elif snap.recommendation_code == 'REVIEW_URGENT' %}<span class="badge text-bg-warning">{{ snap.recommendation_label }}</span>
-                    {% elif snap.recommendation_code == 'TRIM_OR_EXIT' %}<span class="badge text-bg-success">{{ snap.recommendation_label }}</span>
+                    {% elif snap.recommendation_code == 'TRIM_OR_EXIT' %}<span class="badge text-bg-info">{{ snap.recommendation_label }}</span>
                     {% elif snap.recommendation_code == 'REVIEW' %}<span class="badge text-bg-secondary">{{ snap.recommendation_label }}</span>
                     {% else %}<span class="badge text-bg-success">{{ snap.recommendation_label }}</span>{% endif %}
                   {% endwith %}
@@ -288,18 +294,27 @@
                 {% endif %}
               </td>
               <td>
-                <div class="d-flex gap-2 flex-wrap">
-                  <a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:holding_detail' position.pk %}">Review</a>
-                  {% if position.status == 'OPEN' %}
-                  <a class="btn btn-sm btn-outline-success" href="{% url 'portfolios:holding_detail' position.pk %}#record-added-buy">Add buy</a>
-                  {% endif %}
+                {% if position.status == 'CLOSED' %}
+                  <span class="badge text-bg-secondary">—</span>
+                {% else %}
+                  {% with snap=snapshot_map|get_item:position.id %}
+                    {% if snap.stop_breached or snap.thesis_broken %}<span class="badge text-bg-danger">{{ snap.status_label }}</span>
+                    {% elif snap.deteriorating or snap.warning_drawdown %}<span class="badge text-bg-warning">{{ snap.status_label }}</span>
+                    {% elif snap.target_reached %}<span class="badge text-bg-success">{{ snap.status_label }}</span>
+                    {% else %}<span class="badge text-bg-success">Healthy</span>{% endif %}
+                    {% if snap.risk_guardrail_posture == 'OVER' %}<div class="mt-1"><span class="badge text-bg-danger">{{ snap.risk_guardrail_label }}</span></div>{% elif snap.risk_guardrail_posture == 'NEAR' %}<div class="mt-1"><span class="badge text-bg-warning">{{ snap.risk_guardrail_label }}</span></div>{% endif %}
+                  {% endwith %}
+                {% endif %}
+              </td>
+              <td>
+                <div class="d-flex gap-1 flex-wrap">
+                  <a class="btn btn-sm btn-outline-primary" href="{% url 'portfolios:holding_detail' position.pk %}">View</a>
                   <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holding_edit' position.pk %}">Edit</a>
                   {% if position.status == 'OPEN' %}
-                  <form method="post" action="{% url 'portfolios:holding_close' position.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-danger">Close</button></form>
+                    <form method="post" action="{% url 'portfolios:holding_close' position.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-danger">Close</button></form>
                   {% endif %}
                   {% if position.status == 'OPEN' and position.missing_from_latest_import %}
-                  <form method="post" action="{% url 'portfolios:holding_resolve_reconciliation' position.pk %}">{% csrf_token %}<input type="hidden" name="note" value="Reviewed and kept open from the reconciliation queue."><button class="btn btn-sm btn-outline-warning">Keep open</button></form>
-                  <a class="btn btn-sm btn-warning" href="{% url 'portfolios:holding_detail' position.pk %}#reconciliation-review">Reconcile</a>
+                    <form method="post" action="{% url 'portfolios:holding_resolve_reconciliation' position.pk %}">{% csrf_token %}<input type="hidden" name="note" value="Reviewed and kept open from the reconciliation queue."><button class="btn btn-sm btn-outline-warning">Keep</button></form>
                   {% endif %}
                 </div>
               </td>
