@@ -14,7 +14,7 @@ from apps.journal.models import JournalEntry
 from apps.portfolios.models import HeldPosition, SavedFilterPreset, UserRiskProfile
 from apps.portfolios.watchlists import ensure_active_watchlist
 from apps.portfolios.services import assess_signal_guardrails, build_holding_health_snapshot, build_signal_correlation_context, summarize_account_drawdown_monitoring, summarize_account_exposure_heatmap, summarize_account_holding_queues, summarize_account_retention_override_posture, summarize_account_retention_template_drift, summarize_account_risk_posture, summarize_account_stop_guardrails, summarize_broker_snapshot_posture, summarize_evidence_lifecycle_automation, summarize_holding_performance, summarize_holding_risk_guardrails, summarize_holding_sector_exposure, summarize_open_holdings, summarize_portfolio_exposure, summarize_portfolio_health_history, summarize_portfolio_health_score, summarize_stop_discipline_history, summarize_stop_discipline_trends, summarize_stop_policy_exception_trends, summarize_stop_policy_timeliness, summarize_watchlist_sectors
-from apps.marketdata.models import IngestionJob, PriceBar
+from apps.marketdata.models import IngestionJob, Instrument, PriceBar
 from apps.marketdata.services.freshness import build_data_freshness_summary
 from apps.marketdata.services.ingestion_queue import enqueue_watchlist_ingest_job
 from apps.marketdata.services.ingestion_state import clear_provider_cooldowns, clear_unsupported_crypto_symbols
@@ -711,3 +711,51 @@ def data_freshness(request):
             "pending_jobs_count": pending_jobs_count,
         },
     )
+
+
+@login_required
+def symbol_search(request):
+    q = (request.GET.get("q") or "").strip().upper()
+    instruments = []
+    if q:
+        instruments = list(
+            Instrument.objects.filter(symbol__iexact=q).order_by("symbol")
+        )
+        if not instruments:
+            # Partial match fallback (prefix search)
+            instruments = list(
+                Instrument.objects.filter(symbol__istartswith=q, is_active=True).order_by("symbol")[:10]
+            )
+
+    watchlist = ensure_active_watchlist(request.user)
+    watchlist_symbol_set = set()
+    if watchlist:
+        watchlist_symbol_set = set(
+            watchlist.selections.filter(is_active=True)
+            .values_list("instrument__symbol", flat=True)
+        )
+
+    held_symbol_set = set(
+        HeldPosition.objects.filter(user=request.user, status=HeldPosition.Status.OPEN)
+        .values_list("instrument__symbol", flat=True)
+    )
+
+    results = []
+    for instrument in instruments:
+        latest_bar = (
+            PriceBar.objects.filter(instrument=instrument, timeframe="1d")
+            .order_by("-ts")
+            .first()
+        )
+        results.append({
+            "instrument": instrument,
+            "latest_bar": latest_bar,
+            "in_watchlist": instrument.symbol in watchlist_symbol_set,
+            "is_held": instrument.symbol in held_symbol_set,
+        })
+
+    return render(request, "dashboard/symbol_search.html", {
+        "q": q,
+        "results": results,
+        "watchlist": watchlist,
+    })

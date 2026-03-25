@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Symbol Search{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+
+{% block content %}
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h1 class="h3 mb-1">Symbol Search</h1>
+      <div class="text-muted small">Look up an instrument and quickly add it to your watchlist or record a holding.</div>
+    </div>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:home' %}">Dashboard</a>
+  </div>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <form method="get" class="d-flex gap-2">
+        <input
+          type="text"
+          name="q"
+          value="{{ q }}"
+          class="form-control"
+          placeholder="Enter symbol (e.g. AAPL, BTC)"
+          autofocus
+        />
+        <button class="btn btn-primary px-4" type="submit">Search</button>
+      </form>
+    </div>
+  </div>
+
+  {% if q and not results %}
+    <div class="alert alert-warning">
+      No instrument found for <strong>{{ q }}</strong>. The symbol may not be in your instrument universe yet.
+      <a href="{% url 'portfolios:watchlist' %}">Go to Watchlists</a> to import symbols.
+    </div>
+  {% endif %}
+
+  {% if results %}
+    <div class="row g-3">
+      {% for item in results %}
+        <div class="col-12 col-lg-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <div>
+                  <div class="fw-bold fs-5">{{ item.instrument.symbol }}</div>
+                  {% if item.instrument.name %}
+                    <div class="text-muted small">{{ item.instrument.name }}</div>
+                  {% endif %}
+                  <div class="small text-muted">
+                    {{ item.instrument.asset_class }}{% if item.instrument.exchange %} · {{ item.instrument.exchange }}{% endif %}
+                  </div>
+                </div>
+                <div class="text-end">
+                  {% if item.latest_bar %}
+                    <div class="fw-bold fs-5">${{ item.latest_bar.close }}</div>
+                    <div class="small text-muted">{{ item.latest_bar.ts|date:"Y-m-d" }} close</div>
+                  {% else %}
+                    <div class="text-muted small">No price data</div>
+                  {% endif %}
+                </div>
+              </div>
+
+              {% if item.latest_bar %}
+                <div class="d-flex gap-3 small text-muted mb-3">
+                  <span>O: {{ item.latest_bar.open }}</span>
+                  <span>H: {{ item.latest_bar.high }}</span>
+                  <span>L: {{ item.latest_bar.low }}</span>
+                  <span>V: {{ item.latest_bar.volume|floatformat:0 }}</span>
+                </div>
+              {% endif %}
+
+              <div class="d-flex gap-2 flex-wrap">
+                <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}?instrument={{ item.instrument.symbol }}">
+                  <i class="bi bi-lightning me-1"></i>View signals
+                </a>
+
+                {% if item.in_watchlist %}
+                  <span class="btn btn-sm btn-success disabled">
+                    <i class="bi bi-check me-1"></i>In {{ watchlist.name }}
+                  </span>
+                {% else %}
+                  <form method="post" action="{% url 'portfolios:watchlist_add_instrument' item.instrument.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{% url 'dashboard:symbol_search' %}?q={{ q }}">
+                    <button class="btn btn-sm btn-outline-primary">
+                      <i class="bi bi-plus me-1"></i>Add to watchlist
+                    </button>
+                  </form>
+                {% endif %}
+
+                {% if item.is_held %}
+                  <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}?instrument={{ item.instrument.symbol }}">
+                    <i class="bi bi-briefcase me-1"></i>View holding
+                  </a>
+                {% else %}
+                  <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holding_add' %}?symbol={{ item.instrument.symbol }}">
+                    <i class="bi bi-plus-circle me-1"></i>Record holding
+                  </a>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if not q %}
+    <div class="text-muted text-center py-5">
+      <i class="bi bi-search fs-1 d-block mb-2"></i>
+      Enter a symbol above to look it up.
+    </div>
+  {% endif %}
+{% endblock %}
