@@ -61,6 +61,15 @@ def build_watchlist_ingest_plan(
     selections = list(selections_qs)
     if symbol_filter:
         selections = [sel for sel in selections if sel.instrument.symbol.upper() in symbol_filter]
+        # For symbols not in the watchlist (e.g. held positions not on the watchlist),
+        # look them up directly from Instrument so they still get ingested.
+        found_symbols = {sel.instrument.symbol.upper() for sel in selections}
+        missing_symbols = symbol_filter - found_symbols
+        if missing_symbols:
+            extra_instruments = list(Instrument.objects.filter(symbol__in=missing_symbols, is_active=True))
+            # Wrap bare Instrument objects so the planning loop sees a uniform .instrument attribute.
+            for instrument in extra_instruments:
+                selections.append(type("_SelProxy", (), {"instrument": instrument, "instrument_id": instrument.id})())
 
     if not selections:
         return [], 0

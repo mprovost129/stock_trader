@@ -25,6 +25,7 @@ from apps.signals.services.alerts import get_enabled_delivery_channels
 from apps.signals.services.delivery_health import get_delivery_health_summary
 
 from apps.marketdata.services.ingestion_queue import enqueue_watchlist_ingest_job
+from apps.marketdata.services.ingestion import ingest_from_provider
 
 from .services import (
     apply_holding_import_rows,
@@ -1191,6 +1192,8 @@ def watchlist_refresh(request):
     return redirect("portfolios:watchlist")
 
 
+_HOLDINGS_SYNC_LIMIT = 10  # fetch synchronously in-request up to this many symbols
+
 @login_required
 def holdings_refresh(request):
     if request.method != "POST":
@@ -1203,22 +1206,34 @@ def holdings_refresh(request):
         messages.warning(request, "No open positions to refresh.")
         return redirect("portfolios:holdings")
 
-    # Immediately sync last_price from whatever PriceBar data is already in the DB.
-    synced = 0
-    for position in positions:
-        before = position.last_price
-        refresh_position_market_state(position)
-        if position.last_price != before:
-            synced += 1
+    symbols = list({p.instrument.symbol for p in positions})
 
-    # Queue a background ingestion job to fetch fresh bars from the market data API.
-    symbols_csv = ",".join(sorted({p.instrument.symbol for p in positions}))
-    enqueue_watchlist_ingest_job(user=request.user, symbols_csv=symbols_csv, max_symbols=len(positions))
-
-    if synced:
-        messages.success(request, f"Synced prices for {synced} of {len(positions)} position(s) from local data. Fresh bars queued from the market data provider.")
+    if len(symbols) <= _HOLDINGS_SYNC_LIMIT:
+        # Small portfolio: fetch fresh bars from the provider right now, then sync prices.
+        fetched, failed = [], []
+        for symbol in sorted(symbols):
+            try:
+                ingest_from_provider(symbol=symbol, timeframe="1d", limit=10)
+                fetched.append(symbol)
+            except Exception:  # noqa: BLE001
+                failed.append(symbol)
+        # Re-read positions from DB so refresh_position_market_state picks up the new bars.
+        positions = list(
+            HeldPosition.objects.filter(user=request.user, status=HeldPosition.Status.OPEN)
+            .select_related("instrument")
+        )
+        for position in positions:
+            refresh_position_market_state(position)
+        msg = f"Prices updated for {len(fetched)} symbol(s)."
+        if failed:
+            msg += f" Could not fetch: {', '.join(failed)} (provider may be rate-limited — try again shortly)."
+        messages.success(request, msg)
     else:
-        messages.info(request, f"Prices already up to date from local bars. Fresh bars queued from the market data provider for {len(positions)} symbol(s).")
+        # Large portfolio: queue a background job so we don't block the request.
+        symbols_csv = ",".join(sorted(symbols))
+        enqueue_watchlist_ingest_job(user=request.user, symbols_csv=symbols_csv, max_symbols=len(symbols))
+        messages.info(request, f"Price refresh queued for {len(symbols)} symbol(s). Reload the page in a moment.")
+
     return redirect("portfolios:holdings")
 
 
