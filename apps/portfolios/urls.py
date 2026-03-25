@@ -9,6 +9,7 @@ urlpatterns = [
     path("watchlist/create/", views.watchlist_create, name="watchlist_create"),
     path("watchlist/<int:pk>/activate/", views.watchlist_set_active, name="watchlist_set_active"),
     path("watchlist/import/", views.watchlist_import, name="watchlist_import"),
+    path("watchlist/refresh/", views.watchlist_refresh, name="watchlist_refresh"),
     path("watchlist/selection/<int:instrument_id>/", views.watchlist_selection_edit, name="watchlist_selection_edit"),
     path("watchlist/add/", views.watchlist_add_symbol, name="watchlist_add_symbol"),
     path("watchlist/add/<int:instrument_id>/", views.watchlist_add_instrument, name="watchlist_add_instrument"),

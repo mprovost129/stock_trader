@@ -10,6 +10,10 @@
       <div class="text-muted small">Manage multiple symbol universes, tag themes, and choose which one drives your daily scan workflow.</div>
     </div>
     <div class="d-flex gap-2">
+      <form method="post" action="{% url 'portfolios:watchlist_refresh' %}">
+        {% csrf_token %}
+        <button class="btn btn-sm btn-outline-primary">Refresh prices</button>
+      </form>
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:watchlist_import' %}">Import into active</a>
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}">Signals</a>
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:home' %}">Dashboard</a>

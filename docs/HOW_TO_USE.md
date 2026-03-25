@@ -15,7 +15,7 @@ There are two processes to run, both started from the terminal:
 | Process | Command | Purpose |
 |---|---|---|
 | **Web server** | `python manage.py runserver` | The browser UI — run this whenever you want to use the web app |
-| **Scheduler** | `python manage.py run_scheduler --username mprov` | The scan/alert engine — run this continuously in a separate terminal window |
+| **Scheduler** | `python manage.py run_scheduler --username mprovost` | The scan/alert engine — run this continuously in a separate terminal window |
 
 The web server and scheduler are independent. The UI works whether or not the scheduler is running. The scheduler works without a browser.
 
@@ -68,7 +68,7 @@ python manage.py createsuperuser
 
 ```bash
 python manage.py ensure_default_setup \
-  --username mprov \
+  --username mprovost \
   --account-equity 25000 \
   --risk-pct 0.0025
 ```
@@ -102,7 +102,7 @@ The strategies need price history to calculate moving averages and other indicat
 
 ```bash
 python manage.py ingest_watchlist_prices \
-  --username mprov \
+  --username mprovost \
   --max-symbols 5 \
   --throttle-seconds 12
 ```
@@ -148,7 +148,7 @@ Open a terminal and run:
 
 ```bash
 python manage.py run_scheduler \
-  --username mprov \
+  --username mprovost \
   --watchlist Default \
   --max-symbols 25 \
   --throttle-seconds 2

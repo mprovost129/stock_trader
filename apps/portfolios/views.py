@@ -24,6 +24,8 @@ from .watchlists import activate_watchlist, active_watchlist_instrument_ids, ens
 from apps.signals.services.alerts import get_enabled_delivery_channels
 from apps.signals.services.delivery_health import get_delivery_health_summary
 
+from apps.marketdata.services.ingestion_queue import enqueue_watchlist_ingest_job
+
 from .services import (
     apply_holding_import_rows,
     apply_buy_add,
@@ -1178,6 +1180,14 @@ def holding_check_now(request):
     return redirect("portfolios:holdings")
 
 
+@login_required
+def watchlist_refresh(request):
+    if request.method != "POST":
+        return HttpResponseForbidden("POST required")
+    watchlist = ensure_active_watchlist(request.user)
+    enqueue_watchlist_ingest_job(user=request.user, watchlist_name=watchlist.name)
+    messages.success(request, f"Price refresh queued for {watchlist.name}. Data will update shortly.")
+    return redirect("portfolios:watchlist")
 
 
 @login_required
