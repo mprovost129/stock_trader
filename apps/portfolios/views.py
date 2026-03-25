@@ -38,6 +38,7 @@ from .services import (
     create_broker_position_import_run,
     build_watchlist_import_reconciliation,
     check_open_held_positions,
+    refresh_position_market_state,
     deserialize_broker_position_import_rows,
     deserialize_import_rows,
     deserialize_watchlist_import_rows,
@@ -1194,18 +1195,30 @@ def watchlist_refresh(request):
 def holdings_refresh(request):
     if request.method != "POST":
         return HttpResponseForbidden("POST required")
-    symbols = list(
+    positions = list(
         HeldPosition.objects.filter(user=request.user, status=HeldPosition.Status.OPEN)
         .select_related("instrument")
-        .values_list("instrument__symbol", flat=True)
-        .distinct()
     )
-    if not symbols:
+    if not positions:
         messages.warning(request, "No open positions to refresh.")
         return redirect("portfolios:holdings")
-    symbols_csv = ",".join(sorted(symbols))
-    enqueue_watchlist_ingest_job(user=request.user, symbols_csv=symbols_csv, max_symbols=len(symbols))
-    messages.success(request, f"Price refresh queued for {len(symbols)} held symbol(s). Data will update shortly.")
+
+    # Immediately sync last_price from whatever PriceBar data is already in the DB.
+    synced = 0
+    for position in positions:
+        before = position.last_price
+        refresh_position_market_state(position)
+        if position.last_price != before:
+            synced += 1
+
+    # Queue a background ingestion job to fetch fresh bars from the market data API.
+    symbols_csv = ",".join(sorted({p.instrument.symbol for p in positions}))
+    enqueue_watchlist_ingest_job(user=request.user, symbols_csv=symbols_csv, max_symbols=len(positions))
+
+    if synced:
+        messages.success(request, f"Synced prices for {synced} of {len(positions)} position(s) from local data. Fresh bars queued from the market data provider.")
+    else:
+        messages.info(request, f"Prices already up to date from local bars. Fresh bars queued from the market data provider for {len(positions)} symbol(s).")
     return redirect("portfolios:holdings")
 
 
