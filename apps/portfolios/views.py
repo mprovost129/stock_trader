@@ -1191,6 +1191,25 @@ def watchlist_refresh(request):
 
 
 @login_required
+def holdings_refresh(request):
+    if request.method != "POST":
+        return HttpResponseForbidden("POST required")
+    symbols = list(
+        HeldPosition.objects.filter(user=request.user, status=HeldPosition.Status.OPEN)
+        .select_related("instrument")
+        .values_list("instrument__symbol", flat=True)
+        .distinct()
+    )
+    if not symbols:
+        messages.warning(request, "No open positions to refresh.")
+        return redirect("portfolios:holdings")
+    symbols_csv = ",".join(sorted(symbols))
+    enqueue_watchlist_ingest_job(user=request.user, symbols_csv=symbols_csv, max_symbols=len(symbols))
+    messages.success(request, f"Price refresh queued for {len(symbols)} held symbol(s). Data will update shortly.")
+    return redirect("portfolios:holdings")
+
+
+@login_required
 def broker_position_reconciliation(request):
     preview_rows = []
     parse_errors = []

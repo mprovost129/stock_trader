@@ -10,6 +10,7 @@
     <div class="text-muted small">Tell the app what you actually bought so it can warn you when the thesis weakens and give you a usable sell recommendation.</div>
   </div>
   <div class="d-flex gap-2">
+    <form method="post" action="{% url 'portfolios:holdings_refresh' %}">{% csrf_token %}<button class="btn btn-sm btn-outline-primary">Refresh prices</button></form>
     <form method="post" action="{% url 'portfolios:holding_check_now' %}">{% csrf_token %}<button class="btn btn-sm btn-outline-primary">Check now</button></form>
     <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holding_import' %}">Import CSV</a>
     <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings_performance' %}">Performance</a>
