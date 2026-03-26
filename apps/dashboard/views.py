@@ -363,7 +363,10 @@ def home(request):
     # Quick held-position summary (no refresh calls — just read stored values)
     open_positions_qs = HeldPosition.objects.filter(user=request.user, status=HeldPosition.Status.OPEN)
     held_open_count = open_positions_qs.count()
-    held_sell_now = open_positions_qs.filter(recommendation="SELL_NOW").count()
+    # Flag positions where last_price has dropped below stop_price as a lightweight "at risk" proxy
+    held_at_risk = open_positions_qs.filter(
+        stop_price__isnull=False, last_price__isnull=False, last_price__lte=models.F("stop_price")
+    ).count()
     profile = UserRiskProfile.objects.filter(user=request.user).first()
 
     context = {
@@ -382,7 +385,7 @@ def home(request):
         "recent_outcomes": recent_outcomes,
         "pending_outcome_count": pending_outcome_count,
         "held_open_count": held_open_count,
-        "held_sell_now": held_sell_now,
+        "held_at_risk": held_at_risk,
         "account_equity": profile.account_equity if profile else None,
     }
     total_ms = int((perf_counter() - started) * 1000)

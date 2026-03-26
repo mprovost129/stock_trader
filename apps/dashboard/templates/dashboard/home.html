@@ -48,8 +48,8 @@
         <div class="card-body py-2 px-3">
           <div class="text-muted small">Open holdings</div>
           <div class="fs-4 fw-bold">{{ held_open_count }}</div>
-          <div class="small {% if held_sell_now %}text-danger fw-semibold{% else %}text-muted{% endif %}">
-            {% if held_sell_now %}{{ held_sell_now }} sell now{% else %}none urgent{% endif %}
+          <div class="small {% if held_at_risk %}text-danger fw-semibold{% else %}text-muted{% endif %}">
+            {% if held_at_risk %}{{ held_at_risk }} at/below stop{% else %}<a href="{% url 'portfolios:holdings' %}?status=OPEN">View</a>{% endif %}
           </div>
         </div>
       </div>
