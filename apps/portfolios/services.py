@@ -2673,6 +2673,7 @@ def summarize_portfolio_exposure(*, user=None, account_label: str = "") -> dict:
         "total_cost_basis": total_cost_basis.quantize(Decimal("0.01")),
         "unrealized_pnl": (total_market_value - total_cost_basis).quantize(Decimal("0.01")),
         "account_equity": account_equity,
+        "current_equity": (account_equity + (total_market_value - total_cost_basis)).quantize(Decimal("0.01")) if account_equity is not None else None,
         "cash_headroom": cash_headroom,
         "gross_exposure_pct": gross_exposure_pct,
         "net_exposure_pct": net_exposure_pct,

@@ -8,12 +8,22 @@
       <h1 class="h3 mb-1">Operator Dashboard</h1>
       <div class="text-muted small">Fast mode enabled for stable web performance.</div>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+      <form method="get" action="{% url 'dashboard:symbol_search' %}" class="d-flex gap-1">
+        <input type="text" name="q" class="form-control form-control-sm" placeholder="Symbol lookup…" style="width:130px">
+        <button class="btn btn-sm btn-outline-secondary" type="submit"><i class="bi bi-search"></i></button>
+      </form>
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}">Signals</a>
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:data_freshness' %}">Freshness</a>
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}?status=OPEN">Holdings</a>
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:risk_settings' %}">Risk Settings</a>
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:analytics' %}">Analytics</a>
+      <form method="post" action="{% url 'dashboard:toggle_fast_mode' %}">
+        {% csrf_token %}
+        <button class="btn btn-sm btn-outline-primary" title="Switch to full dashboard">
+          <i class="bi bi-toggles me-1"></i>Full mode
+        </button>
+      </form>
     </div>
   </div>
 

@@ -22,6 +22,12 @@
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}?review_queue=1">Review queue</a>
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holdings' %}?status=OPEN">Open holdings</a>
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'journal:list' %}">Journal</a>
+      <form method="post" action="{% url 'dashboard:toggle_fast_mode' %}">
+        {% csrf_token %}
+        <button class="btn btn-sm btn-outline-secondary" title="Switch to fast mode (lighter page)">
+          <i class="bi bi-toggles me-1"></i>Fast mode
+        </button>
+      </form>
     </div>
   </div>
 
@@ -82,9 +88,13 @@
     <div class="col-6 col-md-2">
       <div class="card shadow-sm stat-card h-100">
         <div class="card-body py-2 px-3">
-          <div class="text-muted small">Cash headroom</div>
-          <div class="fs-4 fw-bold">{% if portfolio_exposure.cash_headroom is not None %}${{ portfolio_exposure.cash_headroom }}{% else %}—{% endif %}</div>
-          <div class="small text-muted">{% if portfolio_exposure.net_exposure_pct is not None %}{{ portfolio_exposure.net_exposure_pct }}% net exp.{% else %}no equity set{% endif %}</div>
+          <div class="text-muted small">Equity</div>
+          <div class="fs-4 fw-bold {% if portfolio_exposure.current_equity is not None and portfolio_exposure.account_equity is not None %}{% if portfolio_exposure.current_equity >= portfolio_exposure.account_equity %}text-success{% else %}text-danger{% endif %}{% endif %}">
+            {% if portfolio_exposure.current_equity is not None %}${{ portfolio_exposure.current_equity }}{% else %}—{% endif %}
+          </div>
+          <div class="small text-muted">
+            {% if portfolio_exposure.account_equity is not None %}Start ${{ portfolio_exposure.account_equity }} · <a href="{% url 'portfolios:risk_settings' %}">edit</a>{% else %}<a href="{% url 'portfolios:risk_settings' %}">Set starting equity</a>{% endif %}
+          </div>
         </div>
       </div>
     </div>

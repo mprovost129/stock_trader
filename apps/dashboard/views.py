@@ -359,7 +359,8 @@ def home(request):
     )
     pending_outcome_count = user_signals.filter(status=Signal.Status.NEW).exclude(outcome__status=SignalOutcome.Status.EVALUATED).count()
 
-    fast_mode = bool(getattr(settings, "DASHBOARD_HOME_FAST_MODE", False))
+    settings_fast = bool(getattr(settings, "DASHBOARD_HOME_FAST_MODE", False))
+    fast_mode = request.session.get("dashboard_fast_mode", settings_fast)
     if fast_mode:
         context = {
             "signals": signals,
@@ -382,6 +383,7 @@ def home(request):
             "review_queue": review_queue,
             "recent_outcomes": recent_outcomes,
             "pending_outcome_count": pending_outcome_count,
+            "fast_mode": True,
         }
         total_ms = int((perf_counter() - started) * 1000)
         slow_ms = int(getattr(settings, "DASHBOARD_HOME_SLOW_MS", 2000) or 2000)
@@ -596,6 +598,7 @@ def home(request):
         "top_opportunity_guardrails": top_opportunity_guardrails,
         "top_opportunity_guardrail_summary": top_opportunity_guardrail_summary,
         "analytics_summary": analytics_summary,
+        "fast_mode": False,
     }
     total_ms = int((perf_counter() - started) * 1000)
     slow_ms = int(getattr(settings, "DASHBOARD_HOME_SLOW_MS", 2000) or 2000)
@@ -711,6 +714,15 @@ def data_freshness(request):
             "pending_jobs_count": pending_jobs_count,
         },
     )
+
+
+@login_required
+def toggle_fast_mode(request):
+    if request.method != "POST":
+        return redirect("dashboard:home")
+    current = request.session.get("dashboard_fast_mode", bool(getattr(settings, "DASHBOARD_HOME_FAST_MODE", False)))
+    request.session["dashboard_fast_mode"] = not current
+    return redirect("dashboard:home")
 
 
 @login_required
