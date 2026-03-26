@@ -6,6 +6,17 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def _drop_stale_equity_transaction_table(apps, schema_editor):
+    vendor = schema_editor.connection.vendor
+    if vendor == "postgresql":
+        schema_editor.execute(
+            "DROP TABLE IF EXISTS stock_trader.portfolios_equitytransaction CASCADE; "
+            "DROP TABLE IF EXISTS public.portfolios_equitytransaction CASCADE;"
+        )
+    else:
+        schema_editor.execute("DROP TABLE IF EXISTS portfolios_equitytransaction")
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -14,6 +25,11 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # Drop any stale table left by a previous failed migration attempt.
+        migrations.RunPython(
+            code=_drop_stale_equity_transaction_table,
+            reverse_code=migrations.RunPython.noop,
+        ),
         migrations.CreateModel(
             name='EquityTransaction',
             fields=[
