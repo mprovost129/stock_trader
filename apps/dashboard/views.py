@@ -6,7 +6,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count, F, Q
 from django.shortcuts import redirect, render
 from django.utils.http import urlencode
 
@@ -365,7 +365,7 @@ def home(request):
     held_open_count = open_positions_qs.count()
     # Flag positions where last_price has dropped below stop_price as a lightweight "at risk" proxy
     held_at_risk = open_positions_qs.filter(
-        stop_price__isnull=False, last_price__isnull=False, last_price__lte=models.F("stop_price")
+        stop_price__isnull=False, last_price__isnull=False, last_price__lte=F("stop_price")
     ).count()
     profile = UserRiskProfile.objects.filter(user=request.user).first()
 
