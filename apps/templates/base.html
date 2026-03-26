@@ -62,11 +62,19 @@
                 <li><a class="dropdown-item" href="{% url 'dashboard:data_freshness' %}"><i class="bi bi-database-check me-2"></i>Data freshness</a></li>
                 <li><hr class="dropdown-divider"></li>
                 <li><a class="dropdown-item" href="{% url 'portfolios:risk_settings' %}"><i class="bi bi-sliders me-2"></i>Allocation controls</a></li>
+                <li><a class="dropdown-item" href="{% url 'portfolios:equity_transactions' %}"><i class="bi bi-cash-stack me-2"></i>Account equity</a></li>
+                <li><a class="dropdown-item" href="{% url 'portfolios:portfolio_health_score' %}"><i class="bi bi-heart-pulse me-2"></i>Portfolio health</a></li>
                 <li><a class="dropdown-item" href="{% url 'portfolios:ops_command_center' %}"><i class="bi bi-terminal me-2"></i>Ops</a></li>
               </ul>
             </li>
           </ul>
           <div class="d-flex align-items-center gap-2">
+            {% if user.is_authenticated %}
+              <form method="get" action="{% url 'dashboard:symbol_search' %}" class="d-flex gap-1">
+                <input type="text" name="q" class="form-control form-control-sm bg-dark text-light border-secondary" placeholder="Symbol…" style="width:100px">
+                <button class="btn btn-sm btn-outline-light" type="submit"><i class="bi bi-search"></i></button>
+              </form>
+            {% endif %}
             {% if active_watchlist %}
               <span class="navbar-text small"><i class="bi bi-bookmark me-1"></i>{{ active_watchlist.name }}</span>
             {% endif %}

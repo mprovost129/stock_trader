@@ -297,6 +297,7 @@ def home(request):
 
     def _mark(name: str, t0: float) -> None:
         timings_ms[name] = int((perf_counter() - t0) * 1000)
+    # ── FAST DASHBOARD (only mode) ────────────────────────────────
 
     t0 = perf_counter()
     user_signals = Signal.objects.filter(created_by=request.user)
@@ -359,188 +360,11 @@ def home(request):
     )
     pending_outcome_count = user_signals.filter(status=Signal.Status.NEW).exclude(outcome__status=SignalOutcome.Status.EVALUATED).count()
 
-    settings_fast = bool(getattr(settings, "DASHBOARD_HOME_FAST_MODE", False))
-    fast_mode = request.session.get("dashboard_fast_mode", settings_fast)
-    if fast_mode:
-        context = {
-            "signals": signals,
-            "watchlist": watchlist,
-            "watchlist_count": watchlist_count,
-            "watchlist_priority_counts": watchlist_priority_counts,
-            "watchlist_sector_board": watchlist_sector_board,
-            "data_ready_count": data_ready_count,
-            "signal_counts": signal_counts,
-            "ingestion_backlog_count": ingestion_backlog_count,
-            "journal_counts": journal_counts,
-            "active_configs": active_configs,
-            "setup_items": {
-                "watchlist_ready": watchlist_count > 0,
-                "strategy_ready": active_configs > 0,
-                "signals_ready": signal_counts["total"] > 0,
-                "journal_ready": journal_counts["total"] > 0,
-            },
-            "top_opportunities": top_opportunities,
-            "review_queue": review_queue,
-            "recent_outcomes": recent_outcomes,
-            "pending_outcome_count": pending_outcome_count,
-            "fast_mode": True,
-        }
-        total_ms = int((perf_counter() - started) * 1000)
-        slow_ms = int(getattr(settings, "DASHBOARD_HOME_SLOW_MS", 2000) or 2000)
-        if bool(getattr(settings, "DASHBOARD_HOME_TRACE", False)) or total_ms >= slow_ms:
-            logger.info(
-                "dashboard.home timing user=%s mode=fast total_ms=%s sections=%s",
-                request.user.username,
-                total_ms,
-                ",".join(f"{k}:{v}" for k, v in sorted(timings_ms.items(), key=lambda item: item[1], reverse=True)),
-            )
-        return render(request, "dashboard/home_fast.html", context)
-
-    latest_alerts = list(
-        AlertDelivery.objects.select_related("signal", "signal__instrument")
-        .filter(signal__created_by=request.user)
-        .order_by("-created_at")[:5]
-    )
-    recent_failed_alerts = list(
-        AlertDelivery.objects.select_related("signal", "signal__instrument")
-        .filter(signal__created_by=request.user, status=AlertDelivery.Status.FAILED)
-        .order_by("-created_at")[:5]
-    )
-    recent_operator_notifications = list(
-        OperatorNotification.objects.order_by("-created_at")[:8]
-    )
-    latest_delivery_escalation = (
-        OperatorNotification.objects.filter(kind=OperatorNotification.Kind.DELIVERY_HEALTH, status=OperatorNotification.Status.SENT)
-        .order_by("-created_at")
-        .first()
-    )
-    latest_delivery_recovery = (
-        OperatorNotification.objects.filter(kind=OperatorNotification.Kind.DELIVERY_RECOVERY, status=OperatorNotification.Status.SENT)
-        .order_by("-created_at")
-        .first()
-    )
-    latest_portfolio_health_notification = (
-        OperatorNotification.objects.filter(kind=OperatorNotification.Kind.PORTFOLIO_HEALTH, status=OperatorNotification.Status.SENT)
-        .order_by("-created_at")
-        .first()
-    )
-    delivery_incident_open = bool(latest_delivery_escalation and (not latest_delivery_recovery or latest_delivery_escalation.created_at > latest_delivery_recovery.created_at))
-    delivery_health = get_delivery_health_summary()
-    delivery_channels = {
-        "enabled": get_enabled_delivery_channels(),
-        "discord_enabled": "DISCORD" in get_enabled_delivery_channels(),
-        "email_enabled": "EMAIL" in get_enabled_delivery_channels(),
-        "email_to": getattr(settings, "ALERT_EMAIL_TO", "").strip(),
-        "escalation_cooldown_minutes": int(getattr(settings, "ALERT_ESCALATION_COOLDOWN_MINUTES", 180) or 180),
-        "recovery_cooldown_minutes": int(getattr(settings, "ALERT_RECOVERY_COOLDOWN_MINUTES", 60) or 60),
-        "latest_delivery_escalation": latest_delivery_escalation,
-        "latest_delivery_recovery": latest_delivery_recovery,
-        "delivery_incident_open": delivery_incident_open,
-    }
-
-    open_positions = list(
-        PaperTrade.objects.select_related("signal", "signal__instrument")
-        .filter(status=PaperTrade.Status.OPEN)
-        .order_by("-updated_at")[:10]
-    )
-    recent_position_alerts = list(
-        PositionAlert.objects.select_related("paper_trade", "paper_trade__signal", "paper_trade__signal__instrument")
-        .order_by("-created_at")[:10]
-    )
-    trade_stats = PaperTrade.objects.filter(opened_by=request.user).aggregate(
-        total=Count("id"),
-        open_count=Count("id", filter=Q(status=PaperTrade.Status.OPEN)),
-        closed_count=Count("id", filter=Q(status=PaperTrade.Status.CLOSED)),
-        avg_pnl_pct=Avg("pnl_pct", filter=Q(status=PaperTrade.Status.CLOSED)),
-        wins=Count("id", filter=Q(status=PaperTrade.Status.CLOSED, pnl_amount__gt=0)),
-        losses=Count("id", filter=Q(status=PaperTrade.Status.CLOSED, pnl_amount__lt=0)),
-    )
-    _mark("counts_and_recent", t0)
-
-    t0 = perf_counter()
-    alert_policy = {
-        "event_threshold": float(getattr(settings, "ALERT_MIN_SCORE_EVENT", 80) or 80),
-        "state_threshold": float(getattr(settings, "ALERT_MIN_SCORE_STATE", 60) or 60),
-        "state_change_only": bool(getattr(settings, "ALERT_STATE_CHANGE_ONLY", True)),
-        "max_age_minutes": int(getattr(settings, "ALERT_MAX_SIGNAL_AGE_MINUTES", 4320) or 4320),
-        "cooldown_minutes": int(getattr(settings, "ALERT_COOLDOWN_MINUTES", 30) or 30),
-        "max_per_day": int(getattr(settings, "ALERT_MAX_PER_DAY", 12) or 12),
-    }
-    if alert_policy["event_threshold"] <= 1:
-        alert_policy["event_threshold"] *= 100
-    if alert_policy["state_threshold"] <= 1:
-        alert_policy["state_threshold"] *= 100
-    tuning_preview = build_tuning_preview(username=request.user.username, limit=8)
-    alert_queue_preview = build_alert_queue_preview(username=request.user.username, limit=10)
-    next_session_queue = build_next_session_queue(username=request.user.username, limit=10)
-    high_risk_positions = rank_open_positions(username=request.user.username, limit=5)
-    trade_lifecycle = get_trade_lifecycle_summary()
-    _mark("alert_and_queue_previews", t0)
-
-    t0 = perf_counter()
-    uid = request.user.pk
-    _cache_ttl = 300  # seconds — scheduler runs every 5 min; 300s matches that cadence and reduces cold-start cost
-
-    def _cached(key, fn):
-        result = cache.get(key)
-        if result is None:
-            result = fn()
-            cache.set(key, result, _cache_ttl)
-        return result
-
-    held_positions = _cached(f"dash:held_positions:{uid}", lambda: summarize_open_holdings(user=request.user))
-    portfolio_exposure = _cached(f"dash:portfolio_exposure:{uid}", lambda: summarize_portfolio_exposure(user=request.user))
-    holding_sector_exposure = _cached(f"dash:holding_sector_exposure:{uid}", lambda: summarize_holding_sector_exposure(user=request.user))
-    broker_snapshot_posture = _cached(f"dash:broker_snapshot_posture:{uid}", lambda: summarize_broker_snapshot_posture(user=request.user))
-    account_risk_posture = _cached(f"dash:account_risk_posture:{uid}", lambda: summarize_account_risk_posture(user=request.user))
-    account_exposure_heatmap = _cached(f"dash:account_exposure_heatmap:{uid}", lambda: summarize_account_exposure_heatmap(user=request.user))
-    account_drawdown_monitoring = _cached(f"dash:account_drawdown_monitoring:{uid}", lambda: summarize_account_drawdown_monitoring(user=request.user))
-    holding_risk_guardrails = _cached(f"dash:holding_risk_guardrails:{uid}", lambda: summarize_holding_risk_guardrails(user=request.user))
-    account_stop_guardrails = _cached(f"dash:account_stop_guardrails:{uid}", lambda: summarize_account_stop_guardrails(user=request.user))
-    account_holding_queues = _cached(f"dash:account_holding_queues:{uid}", lambda: summarize_account_holding_queues(user=request.user))
-    stop_discipline_history = _cached(f"dash:stop_discipline_history:{uid}", lambda: summarize_stop_discipline_history(user=request.user))
-    stop_discipline_trends = _cached(f"dash:stop_discipline_trends:{uid}", lambda: summarize_stop_discipline_trends(user=request.user))
-    stop_policy_timeliness = _cached(f"dash:stop_policy_timeliness:{uid}", lambda: summarize_stop_policy_timeliness(user=request.user))
-    stop_policy_exception_trends = _cached(f"dash:stop_policy_exception_trends:{uid}", lambda: summarize_stop_policy_exception_trends(user=request.user))
-    account_retention_override_posture = _cached(f"dash:account_retention_override_posture:{uid}", lambda: summarize_account_retention_override_posture(user=request.user))
-    account_retention_template_drift = _cached(f"dash:account_retention_template_drift:{uid}", lambda: summarize_account_retention_template_drift(user=request.user))
-    evidence_lifecycle_automation = _cached(f"dash:evidence_lifecycle_automation:{uid}", lambda: summarize_evidence_lifecycle_automation(user=request.user))
-    portfolio_health = _cached(f"dash:portfolio_health:{uid}", lambda: summarize_portfolio_health_score(user=request.user))
-    portfolio_health_history = _cached(f"dash:portfolio_health_history:{uid}", lambda: summarize_portfolio_health_history(user=request.user, limit=6))
-    _mark("cached_summaries", t0)
-
-    t0 = perf_counter()
-    risk_profile = UserRiskProfile.objects.filter(user=request.user).first()
-    correlation_context = build_signal_correlation_context(user=request.user, risk_profile=risk_profile)
-    top_opportunity_guardrails = {}
-    top_opportunity_guardrail_summary = {"OK": 0, "NEAR": 0, "OVER": 0, "NO_PROFILE": 0, "NO_PLAN": 0}
-    for signal in top_opportunities:
-        plan = getattr(signal, "trade_plan", None)
-        suggested_qty = getattr(plan, "suggested_qty", None) if plan else None
-        display_price = getattr(signal, "display_price", None)
-        guardrails = assess_signal_guardrails(
-            user=request.user,
-            signal=signal,
-            entry_price=display_price,
-            suggested_qty=suggested_qty,
-            portfolio_exposure=portfolio_exposure,
-            sector_exposure=holding_sector_exposure,
-            correlation_context=correlation_context,
-        )
-        top_opportunity_guardrails[signal.pk] = guardrails
-        top_opportunity_guardrail_summary[guardrails["overall_posture"]] = top_opportunity_guardrail_summary.get(guardrails["overall_posture"], 0) + 1
-    top_opportunity_guardrail_summary["MISSING"] = top_opportunity_guardrail_summary.get("NO_PROFILE", 0) + top_opportunity_guardrail_summary.get("NO_PLAN", 0)
-    signal_preset_widgets = _build_signal_preset_widgets(request.user)
-    holding_preset_widgets = _build_holding_preset_widgets(request.user)
-    analytics_summary = _build_trade_analytics(user=request.user)["summary"]
-    _mark("guardrails_widgets_analytics", t0)
-
-    setup_items = {
-        "watchlist_ready": watchlist_count > 0,
-        "strategy_ready": active_configs > 0,
-        "signals_ready": signal_counts["total"] > 0,
-        "journal_ready": journal_counts["total"] > 0,
-    }
+    # Quick held-position summary (no refresh calls — just read stored values)
+    open_positions_qs = HeldPosition.objects.filter(user=request.user, status=HeldPosition.Status.OPEN)
+    held_open_count = open_positions_qs.count()
+    held_sell_now = open_positions_qs.filter(recommendation="SELL_NOW").count()
+    profile = UserRiskProfile.objects.filter(user=request.user).first()
 
     context = {
         "signals": signals,
@@ -553,52 +377,13 @@ def home(request):
         "ingestion_backlog_count": ingestion_backlog_count,
         "journal_counts": journal_counts,
         "active_configs": active_configs,
-        "latest_alerts": latest_alerts,
-        "recent_failed_alerts": recent_failed_alerts,
-        "delivery_channels": delivery_channels,
-        "delivery_health": delivery_health,
-        "recent_operator_notifications": recent_operator_notifications,
-        "setup_items": setup_items,
         "top_opportunities": top_opportunities,
         "review_queue": review_queue,
         "recent_outcomes": recent_outcomes,
         "pending_outcome_count": pending_outcome_count,
-        "alert_policy": alert_policy,
-        "tuning_preview": tuning_preview,
-        "open_positions": open_positions,
-        "recent_position_alerts": recent_position_alerts,
-        "trade_stats": trade_stats,
-        "alert_queue_preview": alert_queue_preview,
-        "next_session_queue": next_session_queue,
-        "high_risk_positions": high_risk_positions,
-        "trade_lifecycle": trade_lifecycle,
-        "held_positions": held_positions,
-        "signal_preset_widgets": signal_preset_widgets,
-        "holding_preset_widgets": holding_preset_widgets,
-        "portfolio_exposure": portfolio_exposure,
-        "holding_sector_exposure": holding_sector_exposure,
-        "broker_snapshot_posture": broker_snapshot_posture,
-        "account_risk_posture": account_risk_posture,
-        "account_exposure_heatmap": account_exposure_heatmap,
-        "account_drawdown_monitoring": account_drawdown_monitoring,
-        "holding_risk_guardrails": holding_risk_guardrails,
-        "account_stop_guardrails": account_stop_guardrails,
-        "account_holding_queues": account_holding_queues,
-        "stop_discipline_history": stop_discipline_history,
-        "stop_discipline_trends": stop_discipline_trends,
-        "stop_policy_timeliness": stop_policy_timeliness,
-        "stop_policy_exception_trends": stop_policy_exception_trends,
-        "account_retention_override_posture": account_retention_override_posture,
-        "account_retention_template_drift": account_retention_template_drift,
-        "evidence_lifecycle_automation": evidence_lifecycle_automation,
-        "portfolio_health": portfolio_health,
-        "portfolio_health_history": portfolio_health_history,
-        "latest_portfolio_health_notification": latest_portfolio_health_notification,
-        "risk_profile": risk_profile,
-        "top_opportunity_guardrails": top_opportunity_guardrails,
-        "top_opportunity_guardrail_summary": top_opportunity_guardrail_summary,
-        "analytics_summary": analytics_summary,
-        "fast_mode": False,
+        "held_open_count": held_open_count,
+        "held_sell_now": held_sell_now,
+        "account_equity": profile.account_equity if profile else None,
     }
     total_ms = int((perf_counter() - started) * 1000)
     slow_ms = int(getattr(settings, "DASHBOARD_HOME_SLOW_MS", 2000) or 2000)
@@ -610,6 +395,7 @@ def home(request):
             ",".join(f"{k}:{v}" for k, v in sorted(timings_ms.items(), key=lambda item: item[1], reverse=True)),
         )
     return render(request, "dashboard/home.html", context)
+
 
 @login_required
 def analytics(request):
@@ -714,21 +500,6 @@ def data_freshness(request):
             "pending_jobs_count": pending_jobs_count,
         },
     )
-
-
-@login_required
-def toggle_fast_mode(request):
-    # Accept ?set=fast or ?set=full via GET so the user can navigate here directly
-    # even when the full dashboard is too slow to load.
-    explicit = (request.GET.get("set") or request.POST.get("set") or "").strip().lower()
-    if explicit == "fast":
-        request.session["dashboard_fast_mode"] = True
-    elif explicit == "full":
-        request.session["dashboard_fast_mode"] = False
-    elif request.method == "POST":
-        current = request.session.get("dashboard_fast_mode", bool(getattr(settings, "DASHBOARD_HOME_FAST_MODE", False)))
-        request.session["dashboard_fast_mode"] = not current
-    return redirect("dashboard:home")
 
 
 @login_required

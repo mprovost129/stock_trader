@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Account Equity{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h1 class="h3 mb-1">Account Equity</h1>
+    <div class="text-muted small">Track deposits and withdrawals. Each transaction updates your starting equity used for position sizing and exposure calculations.</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:risk_settings' %}">Risk Settings</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:home' %}">Dashboard</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Starting equity</div>
+        <div class="h3 mb-0">{% if profile.account_equity %}${{ profile.account_equity }}{% else %}<span class="text-muted">Not set</span>{% endif %}</div>
+        <div class="small text-muted">Base used for sizing &amp; exposure</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Total deposited</div>
+        <div class="h3 mb-0 text-success">${{ total_deposits }}</div>
+        <div class="small text-muted">all time</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Total withdrawn</div>
+        <div class="h3 mb-0 text-danger">${{ total_withdrawals }}</div>
+        <div class="small text-muted">all time</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Transactions logged</div>
+        <div class="h3 mb-0">{{ tx_count }}</div>
+        <div class="small text-muted">50 most recent shown</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  {# ── Deposit form ──────────────────────────────── #}
+  <div class="col-md-6">
+    <div class="card shadow-sm border-success">
+      <div class="card-body">
+        <h2 class="h5 mb-3 text-success"><i class="bi bi-plus-circle me-2"></i>Add funds (deposit)</h2>
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="transaction_type" value="DEPOSIT">
+          <div class="mb-3">
+            <label class="form-label">Amount ($)</label>
+            <input type="number" name="amount" class="form-control" min="0.01" step="0.01" placeholder="e.g. 500.00" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Notes <span class="text-muted small">(optional)</span></label>
+            <input type="text" name="notes" class="form-control" placeholder="e.g. Monthly contribution, bonus">
+          </div>
+          <button class="btn btn-success w-100">Record deposit</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {# ── Withdrawal form ───────────────────────────── #}
+  <div class="col-md-6">
+    <div class="card shadow-sm border-danger">
+      <div class="card-body">
+        <h2 class="h5 mb-3 text-danger"><i class="bi bi-dash-circle me-2"></i>Remove funds (withdrawal)</h2>
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="transaction_type" value="WITHDRAWAL">
+          <div class="mb-3">
+            <label class="form-label">Amount ($)</label>
+            <input type="number" name="amount" class="form-control" min="0.01" step="0.01" placeholder="e.g. 200.00" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Notes <span class="text-muted small">(optional)</span></label>
+            <input type="text" name="notes" class="form-control" placeholder="e.g. Taking profits out, emergency">
+          </div>
+          <button class="btn btn-danger w-100">Record withdrawal</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Transaction log ───────────────────────────────── #}
+<div class="card shadow-sm mt-4">
+  <div class="card-body">
+    <h2 class="h5 mb-3">Transaction log</h2>
+    {% if transactions %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Type</th>
+              <th>Amount</th>
+              <th>Balance after</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for tx in transactions %}
+              <tr>
+                <td class="text-nowrap text-muted small">{{ tx.created_at|date:"Y-m-d H:i" }}</td>
+                <td>
+                  {% if tx.transaction_type == "DEPOSIT" %}
+                    <span class="badge text-bg-success">Deposit</span>
+                  {% else %}
+                    <span class="badge text-bg-danger">Withdrawal</span>
+                  {% endif %}
+                </td>
+                <td class="fw-semibold {% if tx.transaction_type == 'DEPOSIT' %}text-success{% else %}text-danger{% endif %}">
+                  {% if tx.transaction_type == "DEPOSIT" %}+{% else %}-{% endif %}${{ tx.amount }}
+                </td>
+                <td>${{ tx.balance_after }}</td>
+                <td class="small text-muted">{{ tx.notes|default:"—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="alert alert-info mb-0">No transactions recorded yet. Use the forms above to log your first deposit.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import cast
 
 import dj_database_url
 
@@ -45,7 +46,7 @@ if database_url:
 	db_schema = (os.getenv("DJANGO_DB_SCHEMA") or "").strip()
 	if db_schema:
 		db_config.setdefault("OPTIONS", {})["options"] = f"-c search_path={db_schema},public"
-	DATABASES["default"] = db_config
+	DATABASES["default"] = cast(dict[str, object], db_config)
 else:
 	use_render_disk_sqlite = _env_bool("DJANGO_USE_RENDER_DISK_SQLITE", True)
 	render_disk_mount = (os.getenv("RENDER_DISK_MOUNT_PATH") or "").strip()

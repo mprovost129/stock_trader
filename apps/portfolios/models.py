@@ -79,6 +79,26 @@ class UserRiskProfile(models.Model):
         return f"RiskProfile for {self.user}"
 
 
+class EquityTransaction(models.Model):
+    class TransactionType(models.TextChoices):
+        DEPOSIT = "DEPOSIT", "Deposit"
+        WITHDRAWAL = "WITHDRAWAL", "Withdrawal"
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="equity_transactions")
+    transaction_type = models.CharField(max_length=16, choices=TransactionType.choices)
+    amount = models.DecimalField(max_digits=20, decimal_places=2)
+    notes = models.TextField(blank=True)
+    balance_after = models.DecimalField(max_digits=20, decimal_places=2)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "-created_at"], name="idx_equity_tx_user_ts"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user} {self.transaction_type} ${self.amount}"
 
 
 class AccountRetentionPolicyOverride(models.Model):

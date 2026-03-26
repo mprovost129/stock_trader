@@ -1,7 +1,8 @@
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
-from django.db.models import OuterRef, Subquery
+from django.db import models
+from django.db.models import OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Coalesce
 
 from django.conf import settings
@@ -19,7 +20,7 @@ from apps.marketdata.models import Instrument, PriceBar
 from apps.signals.models import AlertDelivery, OperatorNotification, Signal
 
 from .forms import AccountRetentionPolicyOverrideCloneForm, AccountRetentionPolicyOverrideForm, AccountRetentionPolicyTemplateApplyForm, AccountRetentionPolicyTemplateForm, AccountTransferForm, AddSharesForm, BrokerPositionImportForm, BrokerPositionResolutionForm, BrokerSnapshotForm, HeldPositionForm, HoldingImportForm, PartialSellForm, ReconciliationResolveForm, SavedFilterPresetForm, StopPolicyResolutionNoteForm, UserRiskProfileForm, WatchlistCreateForm, WatchlistImportForm, WatchlistSelectionForm, WatchlistSymbolForm
-from .models import AccountRetentionPolicyOverride, AccountRetentionPolicyTemplate, BrokerPositionImportResolution, BrokerPositionImportRun, HeldPosition, HoldingAlert, HoldingTransaction, ImportedBrokerSnapshot, InstrumentSelection, SavedFilterPreset, UserRiskProfile, Watchlist
+from .models import AccountRetentionPolicyOverride, AccountRetentionPolicyTemplate, BrokerPositionImportResolution, BrokerPositionImportRun, EquityTransaction, HeldPosition, HoldingAlert, HoldingTransaction, ImportedBrokerSnapshot, InstrumentSelection, SavedFilterPreset, UserRiskProfile, Watchlist
 from .watchlists import activate_watchlist, active_watchlist_instrument_ids, ensure_active_watchlist
 from apps.signals.services.alerts import get_enabled_delivery_channels
 from apps.signals.services.delivery_health import get_delivery_health_summary
@@ -1235,6 +1236,67 @@ def holdings_refresh(request):
         messages.info(request, f"Price refresh queued for {len(symbols)} symbol(s). Reload the page in a moment.")
 
     return redirect("portfolios:holdings")
+
+
+@login_required
+def equity_transactions(request):
+    profile, _ = UserRiskProfile.objects.get_or_create(user=request.user)
+
+    if request.method == "POST":
+        tx_type = request.POST.get("transaction_type", "").strip().upper()
+        notes = request.POST.get("notes", "").strip()
+        amount_raw = request.POST.get("amount", "").strip()
+
+        try:
+            amount = Decimal(amount_raw)
+            if amount <= 0:
+                raise ValueError("Amount must be positive")
+        except (InvalidOperation, ValueError):
+            messages.error(request, "Enter a valid positive amount.")
+            return redirect("portfolios:equity_transactions")
+
+        if tx_type not in ("DEPOSIT", "WITHDRAWAL"):
+            messages.error(request, "Invalid transaction type.")
+            return redirect("portfolios:equity_transactions")
+
+        current_equity = Decimal(profile.account_equity or 0)
+        if tx_type == "DEPOSIT":
+            new_equity = current_equity + amount
+        else:
+            new_equity = current_equity - amount
+            if new_equity < 0:
+                messages.error(request, f"Withdrawal of ${amount} would take equity below zero (current: ${current_equity}).")
+                return redirect("portfolios:equity_transactions")
+
+        profile.account_equity = new_equity
+        profile.save(update_fields=["account_equity", "updated_at"])
+
+        EquityTransaction.objects.create(
+            user=request.user,
+            transaction_type=tx_type,
+            amount=amount,
+            notes=notes,
+            balance_after=new_equity,
+        )
+
+        verb = "Deposit" if tx_type == "DEPOSIT" else "Withdrawal"
+        messages.success(request, f"{verb} of ${amount} recorded. Starting equity is now ${new_equity}.")
+        return redirect("portfolios:equity_transactions")
+
+    transactions = list(
+        EquityTransaction.objects.filter(user=request.user).order_by("-created_at")[:50]
+    )
+    totals = EquityTransaction.objects.filter(user=request.user).aggregate(
+        total_deposits=Sum("amount", filter=models.Q(transaction_type=EquityTransaction.TransactionType.DEPOSIT)),
+        total_withdrawals=Sum("amount", filter=models.Q(transaction_type=EquityTransaction.TransactionType.WITHDRAWAL)),
+    )
+    return render(request, "portfolios/equity_transactions.html", {
+        "profile": profile,
+        "transactions": transactions,
+        "total_deposits": totals["total_deposits"] or Decimal("0"),
+        "total_withdrawals": totals["total_withdrawals"] or Decimal("0"),
+        "tx_count": EquityTransaction.objects.filter(user=request.user).count(),
+    })
 
 
 @login_required

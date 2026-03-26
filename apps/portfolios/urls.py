@@ -39,4 +39,5 @@ urlpatterns = [
     path("holdings/<int:pk>/partial-sell/", views.holding_partial_sell, name="holding_partial_sell"),
     path("holdings/check-now/", views.holding_check_now, name="holding_check_now"),
     path("holdings/refresh/", views.holdings_refresh, name="holdings_refresh"),
+    path("equity/", views.equity_transactions, name="equity_transactions"),
 ]
