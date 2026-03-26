@@ -479,7 +479,7 @@ def home(request):
 
     t0 = perf_counter()
     uid = request.user.pk
-    _cache_ttl = 60  # seconds — scheduler runs every 5 min; 60s keeps UI snappy without staleness
+    _cache_ttl = 300  # seconds — scheduler runs every 5 min; 300s matches that cadence and reduces cold-start cost
 
     def _cached(key, fn):
         result = cache.get(key)
@@ -718,10 +718,16 @@ def data_freshness(request):
 
 @login_required
 def toggle_fast_mode(request):
-    if request.method != "POST":
-        return redirect("dashboard:home")
-    current = request.session.get("dashboard_fast_mode", bool(getattr(settings, "DASHBOARD_HOME_FAST_MODE", False)))
-    request.session["dashboard_fast_mode"] = not current
+    # Accept ?set=fast or ?set=full via GET so the user can navigate here directly
+    # even when the full dashboard is too slow to load.
+    explicit = (request.GET.get("set") or request.POST.get("set") or "").strip().lower()
+    if explicit == "fast":
+        request.session["dashboard_fast_mode"] = True
+    elif explicit == "full":
+        request.session["dashboard_fast_mode"] = False
+    elif request.method == "POST":
+        current = request.session.get("dashboard_fast_mode", bool(getattr(settings, "DASHBOARD_HOME_FAST_MODE", False)))
+        request.session["dashboard_fast_mode"] = not current
     return redirect("dashboard:home")
 
 

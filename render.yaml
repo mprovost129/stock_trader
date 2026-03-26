@@ -7,7 +7,7 @@ services:
       python manage.py collectstatic --noinput &&
       python manage.py ensure_db_schema &&
       python manage.py migrate --noinput
-    startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --worker-class gthread --workers 1 --threads 2 --timeout 60 --graceful-timeout 30 --keep-alive 5 --max-requests 500 --max-requests-jitter 50
+    startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --worker-class gthread --workers 1 --threads 2 --timeout 120 --graceful-timeout 60 --keep-alive 5 --max-requests 500 --max-requests-jitter 50
     healthCheckPath: /health/
     autoDeploy: true
     envVars:
@@ -37,6 +37,8 @@ services:
         value: "25"
       - key: DJANGO_DB_SCHEMA
         value: stock_trader   # isolates all tables in their own schema; other apps keep using public
+      - key: DASHBOARD_HOME_FAST_MODE
+        value: "true"         # default to fast mode on Render; toggle to full via the dashboard button
 
   - type: worker
     name: stock-trader-scheduler
