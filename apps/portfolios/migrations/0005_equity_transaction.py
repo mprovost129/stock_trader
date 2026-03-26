@@ -9,9 +9,19 @@ from django.db import migrations, models
 def _drop_stale_equity_transaction_table(apps, schema_editor):
     vendor = schema_editor.connection.vendor
     if vendor == "postgresql":
+        # Drop table in both schemas (CASCADE removes the composite type with it).
         schema_editor.execute(
-            "DROP TABLE IF EXISTS stock_trader.portfolios_equitytransaction CASCADE; "
+            "DROP TABLE IF EXISTS stock_trader.portfolios_equitytransaction CASCADE;"
+        )
+        schema_editor.execute(
             "DROP TABLE IF EXISTS public.portfolios_equitytransaction CASCADE;"
+        )
+        # Also drop any orphaned composite type that wasn't removed with the table.
+        schema_editor.execute(
+            "DROP TYPE IF EXISTS stock_trader.portfolios_equitytransaction CASCADE;"
+        )
+        schema_editor.execute(
+            "DROP TYPE IF EXISTS public.portfolios_equitytransaction CASCADE;"
         )
     else:
         schema_editor.execute("DROP TABLE IF EXISTS portfolios_equitytransaction")
