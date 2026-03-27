@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load dashboard_extras %}
 
 {% block title %}{{ position.instrument.symbol }} Holding{% endblock %}
 
@@ -34,7 +35,10 @@
           <dt class="col-5">Stop</dt><dd class="col-7">{{ position.stop_price|default:"—" }}</dd>
           <dt class="col-5">Target</dt><dd class="col-7">{{ position.target_price|default:"—" }}</dd>
           <dt class="col-5">Last</dt><dd class="col-7">{{ position.last_price|default:"—" }}</dd>
-          <dt class="col-5">PnL</dt><dd class="col-7">{% if position.pnl_pct is not None %}{{ position.pnl_pct }}% / {{ position.pnl_amount|default:"—" }}{% else %}—{% endif %}</dd>
+          <dt class="col-5">PnL</dt>
+          <dd class="col-7 {% if position.pnl_pct is not None and position.pnl_pct < 0 %}text-danger fw-semibold{% elif position.pnl_pct is not None and position.pnl_pct > 0 %}text-success fw-semibold{% endif %}">
+            {% if position.pnl_pct is not None %}{{ position.pnl_pct }}% / {{ position.pnl_amount|default:"—" }}{% else %}—{% endif %}
+          </dd>
           <dt class="col-5">Import sync</dt><dd class="col-7">{% if position.missing_from_latest_import %}<span class="badge text-bg-warning">missing from latest import</span>{% elif position.reconciliation_resolved_at %}reviewed {{ position.reconciliation_resolved_at }}{% else %}in sync{% endif %}</dd>
         </dl>
       </div>
@@ -237,7 +241,7 @@
             <tbody>
               {% for tx in recent_transactions %}
               <tr>
-                <td>{{ tx.created_at }}</td>
+                <td class="text-nowrap text-muted small">{{ tx.created_at|date:"M d H:i" }}</td>
                 <td>
                   {{ tx.get_event_type_display }}
                   {% if tx.risk_guardrail_posture_snapshot == 'OVER' %}<div><span class="badge text-bg-danger">Over</span></div>
@@ -276,7 +280,7 @@
             <tbody>
               {% for alert in recent_alerts %}
               <tr>
-                <td>{{ alert.created_at }}</td>
+                <td class="text-nowrap text-muted small">{{ alert.created_at|date:"M d H:i" }}</td>
                 <td>{{ alert.alert_type }}</td>
                 <td>{{ alert.channel }}</td>
                 <td>{{ alert.status }}</td>
@@ -302,11 +306,11 @@
             <tbody>
               {% for signal in recent_signals %}
               <tr>
-                <td>{{ signal.generated_at }}</td>
+                <td class="text-nowrap text-muted small">{{ signal.generated_at|date:"M d H:i" }}</td>
                 <td>{{ signal.strategy.slug }}</td>
                 <td>{{ signal.timeframe }}</td>
                 <td>{{ signal.direction }}</td>
-                <td>{{ signal.score|default:"—" }}</td>
+                <td class="{{ signal.score|score_color_class }}">{{ signal.score|default:"—" }}</td>
               </tr>
               {% endfor %}
             </tbody>

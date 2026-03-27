@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load dashboard_extras %}
 
 {% block title %}Symbol Search{% endblock %}
 {% block nav_dashboard %}active{% endblock %}
@@ -70,9 +71,22 @@
                 </div>
               {% endif %}
 
+              {% if item.latest_signal %}
+                <div class="border-top pt-2 mb-2 small">
+                  <span class="text-muted">Latest signal:</span>
+                  <a href="{% url 'signals:detail' item.latest_signal.pk %}" class="ms-1 fw-semibold">{{ item.latest_signal.strategy.slug }}</a>
+                  <span class="text-muted ms-1">{{ item.latest_signal.direction }} · {{ item.latest_signal.timeframe }} · <span class="{{ item.latest_signal.score|score_color_class }}">{{ item.latest_signal.score|default:"—" }}</span></span>
+                  {% with age=item.latest_signal.generated_at|hours_old %}
+                    {% if age is not None and age >= 24 %}<span class="badge text-bg-warning ms-1">{{ age }}h old</span>
+                    {% elif age is not None %}<span class="text-muted ms-1">{{ age }}h ago</span>{% endif %}
+                  {% endwith %}
+                  {% if item.signal_count > 1 %}<span class="text-muted ms-2">({{ item.signal_count }} total)</span>{% endif %}
+                </div>
+              {% endif %}
+
               <div class="d-flex gap-2 flex-wrap">
                 <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}?instrument={{ item.instrument.symbol }}">
-                  <i class="bi bi-lightning me-1"></i>View signals
+                  <i class="bi bi-lightning me-1"></i>{% if item.signal_count %}{{ item.signal_count }} signal{{ item.signal_count|pluralize }}{% else %}View signals{% endif %}
                 </a>
 
                 {% if item.in_watchlist %}

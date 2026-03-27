@@ -8,45 +8,53 @@
     <h1 class="h3 mb-0">Journal</h1>
     <div class="d-flex gap-2">
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}">Signals</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:analytics' %}">Analytics</a>
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard:home' %}">Dashboard</a>
     </div>
   </div>
 
   <div class="row g-3 mb-3">
-    <div class="col-md-3"><div class="card shadow-sm"><div class="card-body"><div class="text-muted small">Entries</div><div class="h3 mb-0">{{ stats.total|default:0 }}</div></div></div></div>
-    <div class="col-md-3"><div class="card shadow-sm"><div class="card-body"><div class="text-muted small">Took it</div><div class="h3 mb-0">{{ stats.yes|default:0 }}</div></div></div></div>
-    <div class="col-md-3"><div class="card shadow-sm"><div class="card-body"><div class="text-muted small">Wins</div><div class="h3 mb-0">{{ stats.wins|default:0 }}</div></div></div></div>
-    <div class="col-md-3"><div class="card shadow-sm"><div class="card-body"><div class="text-muted small">Losses</div><div class="h3 mb-0">{{ stats.losses|default:0 }}</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="card shadow-sm"><div class="card-body py-2 px-3"><div class="text-muted small">Entries</div><div class="h3 mb-0">{{ stats.total|default:0 }}</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="card shadow-sm"><div class="card-body py-2 px-3"><div class="text-muted small">Took it (YES)</div><div class="h3 mb-0 text-success">{{ stats.yes|default:0 }}</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="card shadow-sm"><div class="card-body py-2 px-3"><div class="text-muted small">Wins</div><div class="h3 mb-0 text-success">{{ stats.wins|default:0 }}</div><div class="small text-muted">{{ stats.losses|default:0 }} losses</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="card shadow-sm"><div class="card-body py-2 px-3"><div class="text-muted small">Win rate</div><div class="h3 mb-0 {% if stats.win_rate is not None and stats.win_rate >= 50 %}text-success{% elif stats.win_rate is not None %}text-danger{% endif %}">{% if stats.win_rate is not None %}{{ stats.win_rate }}%{% else %}—{% endif %}</div></div></div></div>
   </div>
 
   <div class="card shadow-sm mb-3">
+    <div class="card-header bg-white py-2">
+      <div class="d-flex align-items-center justify-content-between">
+        <span class="fw-semibold small"><i class="bi bi-funnel me-2 text-muted"></i>Filters{% if decision_filter or outcome_filter or tag_filter %}<span class="badge text-bg-primary ms-1">active</span>{% endif %}</span>
+        {% if decision_filter or outcome_filter or tag_filter %}<a class="btn btn-sm btn-outline-secondary py-0" href="{% url 'journal:list' %}">Clear</a>{% endif %}
+      </div>
+    </div>
     <div class="card-body">
       <form method="get" class="row g-2 align-items-end">
-        <div class="col-md-3">
-          <label class="form-label">Decision</label>
-          <select class="form-select" name="decision">
+        <div class="col-6 col-md-3">
+          <label class="form-label small text-muted mb-1">Decision</label>
+          <select class="form-select form-select-sm" name="decision">
             <option value="">All</option>
-            <option value="YES" {% if decision_filter == 'YES' %}selected{% endif %}>YES</option>
-            <option value="NO" {% if decision_filter == 'NO' %}selected{% endif %}>NO</option>
-            <option value="SKIP" {% if decision_filter == 'SKIP' %}selected{% endif %}>SKIP</option>
+            <option value="YES" {% if decision_filter == 'YES' %}selected{% endif %}>Yes — took it</option>
+            <option value="NO" {% if decision_filter == 'NO' %}selected{% endif %}>No — passed</option>
+            <option value="SKIP" {% if decision_filter == 'SKIP' %}selected{% endif %}>Skip / other</option>
           </select>
         </div>
-        <div class="col-md-3">
-          <label class="form-label">Outcome</label>
-          <select class="form-select" name="outcome">
+        <div class="col-6 col-md-3">
+          <label class="form-label small text-muted mb-1">Outcome</label>
+          <select class="form-select form-select-sm" name="outcome">
             <option value="">All</option>
-            <option value="WIN" {% if outcome_filter == 'WIN' %}selected{% endif %}>WIN</option>
-            <option value="LOSS" {% if outcome_filter == 'LOSS' %}selected{% endif %}>LOSS</option>
-            <option value="BREAKEVEN" {% if outcome_filter == 'BREAKEVEN' %}selected{% endif %}>BREAKEVEN</option>
-            <option value="UNKNOWN" {% if outcome_filter == 'UNKNOWN' %}selected{% endif %}>UNKNOWN</option>
+            <option value="WIN" {% if outcome_filter == 'WIN' %}selected{% endif %}>Win</option>
+            <option value="LOSS" {% if outcome_filter == 'LOSS' %}selected{% endif %}>Loss</option>
+            <option value="BREAKEVEN" {% if outcome_filter == 'BREAKEVEN' %}selected{% endif %}>Breakeven</option>
+            <option value="UNKNOWN" {% if outcome_filter == 'UNKNOWN' %}selected{% endif %}>Unknown</option>
           </select>
         </div>
         <div class="col-md-4">
-          <label class="form-label">Tag contains</label>
-          <input class="form-control" type="text" name="tag" value="{{ tag_filter }}" />
+          <label class="form-label small text-muted mb-1">Tag contains</label>
+          <input class="form-control form-control-sm" type="text" name="tag" value="{{ tag_filter }}" />
         </div>
-        <div class="col-md-2 d-flex gap-2">
-          <button class="btn btn-primary w-100" type="submit">Filter</button>
+        <div class="col-auto d-flex gap-2">
+          <button class="btn btn-sm btn-primary" type="submit">Apply</button>
+          {% if decision_filter or outcome_filter or tag_filter %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'journal:list' %}">Clear</a>{% endif %}
         </div>
       </form>
     </div>
@@ -54,8 +62,8 @@
 
   {% if entries %}
     <div class="table-responsive">
-      <table class="table table-sm align-middle">
-        <thead>
+      <table class="table table-sm align-middle table-hover">
+        <thead class="table-light">
           <tr>
             <th>Time</th>
             <th>Decision</th>
@@ -69,15 +77,24 @@
         <tbody>
           {% for e in entries %}
             <tr>
-              <td class="text-nowrap">{{ e.decided_at|date:"Y-m-d H:i" }}</td>
-              <td>{{ e.decision }}</td>
-              <td>{{ e.outcome }}</td>
-              <td>{{ e.realized_r|default:"" }}</td>
+              <td class="text-nowrap text-muted small">{{ e.decided_at|date:"M d H:i" }}</td>
+              <td>
+                {% if e.decision == 'YES' %}<span class="text-success fw-semibold">Yes</span>
+                {% elif e.decision == 'NO' %}<span class="text-danger">No</span>
+                {% else %}<span class="text-muted">Skip</span>{% endif %}
+              </td>
+              <td>
+                {% if e.outcome == 'WIN' %}<span class="badge text-bg-success">Win</span>
+                {% elif e.outcome == 'LOSS' %}<span class="badge text-bg-danger">Loss</span>
+                {% elif e.outcome == 'BREAKEVEN' %}<span class="badge text-bg-secondary">B/E</span>
+                {% else %}<span class="text-muted small">—</span>{% endif %}
+              </td>
+              <td class="{% if e.realized_r is not None and e.realized_r > 0 %}text-success{% elif e.realized_r is not None and e.realized_r < 0 %}text-danger{% endif %}">{{ e.realized_r|default:"—" }}</td>
               <td>
                 {% if e.signal %}
                   <a href="{% url 'signals:detail' e.signal.pk %}">{{ e.signal.instrument.symbol }} — {{ e.signal.strategy.slug }}</a>
                 {% else %}
-                  —
+                  <span class="text-muted">—</span>
                 {% endif %}
               </td>
               <td class="small text-muted">{{ e.tags|default:"—" }}</td>
@@ -88,6 +105,10 @@
       </table>
     </div>
   {% else %}
-    <div class="alert alert-info">No journal entries yet.</div>
+    {% if decision_filter or outcome_filter or tag_filter %}
+      <div class="alert alert-info">No entries match the active filters. <a href="{% url 'journal:list' %}">Clear filters</a></div>
+    {% else %}
+      <div class="alert alert-secondary">No journal entries yet. Use the signal detail page to record your decisions.</div>
+    {% endif %}
   {% endif %}
 {% endblock %}

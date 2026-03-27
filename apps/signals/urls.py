@@ -6,6 +6,7 @@ app_name = "signals"
 
 urlpatterns = [
     path("", views.list_signals, name="list"),
+    path("paper-trades/", views.paper_trade_list, name="paper_trade_list"),
     path("presets/save/", views.save_filter_preset, name="save_filter_preset"),
     path("presets/<int:pk>/toggle-dashboard/", views.toggle_filter_preset_dashboard, name="toggle_filter_preset_dashboard"),
     path("presets/<int:pk>/delete/", views.delete_filter_preset, name="delete_filter_preset"),

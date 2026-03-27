@@ -49,22 +49,27 @@
               </a>
             </li>
             <li class="nav-item">
-              <a class="nav-link px-2 {% block nav_journal %}{% endblock %}" href="{% url 'journal:list' %}">
-                <i class="bi bi-journal-text me-1"></i>Journal
+              <a class="nav-link px-2 {% block nav_health %}{% endblock %}" href="{% url 'portfolios:portfolio_health_score' %}">
+                <i class="bi bi-heart-pulse me-1"></i>Health
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link px-2 {% block nav_ops %}{% endblock %}" href="{% url 'portfolios:ops_command_center' %}">
+                <i class="bi bi-terminal me-1"></i>Ops
               </a>
             </li>
             <li class="nav-item dropdown">
               <a class="nav-link px-2 dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                <i class="bi bi-gear me-1"></i>More
+                <i class="bi bi-three-dots me-1"></i>More
               </a>
               <ul class="dropdown-menu dropdown-menu-dark">
+                <li><a class="dropdown-item" href="{% url 'signals:paper_trade_list' %}"><i class="bi bi-clipboard2-data me-2"></i>Paper trades</a></li>
+                <li><a class="dropdown-item" href="{% url 'journal:list' %}"><i class="bi bi-journal-text me-2"></i>Journal</a></li>
                 <li><a class="dropdown-item" href="{% url 'dashboard:analytics' %}"><i class="bi bi-bar-chart me-2"></i>Analytics</a></li>
                 <li><a class="dropdown-item" href="{% url 'dashboard:data_freshness' %}"><i class="bi bi-database-check me-2"></i>Data freshness</a></li>
                 <li><hr class="dropdown-divider"></li>
                 <li><a class="dropdown-item" href="{% url 'portfolios:risk_settings' %}"><i class="bi bi-sliders me-2"></i>Allocation controls</a></li>
                 <li><a class="dropdown-item" href="{% url 'portfolios:equity_transactions' %}"><i class="bi bi-cash-stack me-2"></i>Account equity</a></li>
-                <li><a class="dropdown-item" href="{% url 'portfolios:portfolio_health_score' %}"><i class="bi bi-heart-pulse me-2"></i>Portfolio health</a></li>
-                <li><a class="dropdown-item" href="{% url 'portfolios:ops_command_center' %}"><i class="bi bi-terminal me-2"></i>Ops</a></li>
               </ul>
             </li>
           </ul>
@@ -76,7 +81,7 @@
               </form>
             {% endif %}
             {% if active_watchlist %}
-              <span class="navbar-text small"><i class="bi bi-bookmark me-1"></i>{{ active_watchlist.name }}</span>
+              <span class="navbar-text small"><i class="bi bi-bookmark me-1"></i>{{ active_watchlist.name }}{% if active_watchlist_count %} <span class="opacity-75">({{ active_watchlist_count }})</span>{% endif %}</span>
             {% endif %}
             <span class="navbar-text small">{{ user.get_username }}</span>
             <form method="post" action="{% url 'logout' %}" class="d-inline mb-0">
@@ -101,15 +106,39 @@
         {% endfor %}
       {% endif %}
 
-      <div class="alert alert-warning alert-dismissible fade show py-2 small mb-3" role="alert">
+      <div id="app-disclaimer" class="alert alert-warning alert-dismissible fade show py-2 small mb-3" role="alert">
         <i class="bi bi-info-circle me-1"></i>
         <strong>Disclaimer:</strong> Educational decision-support only. Does not place trades. You are responsible for all trading decisions and risk.
-        <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert"></button>
+        <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert" id="dismiss-disclaimer"></button>
       </div>
 
       {% block content %}{% endblock %}
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    {% block extra_js %}{% endblock %}
+    <script>
+      // Persist disclaimer dismissal across page loads
+      (function () {
+        var el = document.getElementById('app-disclaimer');
+        if (!el) return;
+        if (localStorage.getItem('disclaimer_dismissed')) {
+          el.remove();
+        } else {
+          document.getElementById('dismiss-disclaimer').addEventListener('click', function () {
+            localStorage.setItem('disclaimer_dismissed', '1');
+          });
+        }
+      })();
+
+      {% if market_is_open %}
+      // Auto-refresh every 5 minutes while market is open; cancel on first user interaction
+      (function () {
+        var timer = setTimeout(function () { location.reload(); }, 5 * 60 * 1000);
+        document.addEventListener('click', function () { clearTimeout(timer); }, { once: true });
+        document.addEventListener('keydown', function () { clearTimeout(timer); }, { once: true });
+      })();
+      {% endif %}
+    </script>
   </body>
 </html>

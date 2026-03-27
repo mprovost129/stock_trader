@@ -939,6 +939,24 @@ def holding_create(request):
             obj.account_label = (obj.account_label or "").strip()
             obj.user = request.user
             obj.source = HeldPosition.Source.MANUAL
+            new_acct = obj.account_label or ""
+            same_account_existing = HeldPosition.objects.filter(
+                user=request.user,
+                instrument=obj.instrument,
+                status=HeldPosition.Status.OPEN,
+                account_label=new_acct,
+            ).first()
+            other_account_existing = HeldPosition.objects.filter(
+                user=request.user,
+                instrument=obj.instrument,
+                status=HeldPosition.Status.OPEN,
+            ).exclude(account_label=new_acct).first()
+            if same_account_existing:
+                acct_label = new_acct or "default"
+                messages.warning(request, f"Duplicate: you already have an open position for {obj.instrument.symbol} in account '{acct_label}'. Added anyway — review for unintended duplication.")
+            elif other_account_existing:
+                other_acct = other_account_existing.account_label or "default"
+                messages.info(request, f"Note: you already hold {obj.instrument.symbol} in account '{other_acct}'. This adds it to a different account.")
             obj.save()
             record_holding_transaction(position=obj, event_type=HoldingTransaction.EventType.OPEN, quantity=obj.quantity, price=obj.average_entry_price, notes="Manual open position.", created_at=obj.opened_at)
             resolved_run_id = _maybe_record_broker_apply_resolution(

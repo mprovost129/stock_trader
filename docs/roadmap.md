@@ -207,3 +207,56 @@
 - Also added missing `ALERT_RECOVERY_COOLDOWN_MINUTES` and `SCHEDULER_DELIVERY_RECOVERY_EVERY` settings that were referenced in code but absent from base.py.
 - Done: deterioration service, command, scheduler wiring, settings, Discord/email notification support.
 - Left: any future score-weight refinements or storage-tier automation outside the app.
+
+## 2026-03-27 Pack CG — Signal decision support layer
+- Added a reusable signal decision-support service that converts raw signal state into plain-language operator actions such as **Buy now**, **Watch closely**, **Review**, **Skip — risk cap**, and **Already held**.
+- Dashboard top opportunities are now ranked with actionability in mind instead of score alone, and the homepage now shows a simple decision mix for the current top queue.
+- Signals list now surfaces action labels plus next-step guidance so Mike can work from the page without opening every row first.
+- Signal detail now shows an operator-action card and guardrail posture card so each setup explains what to do next and why.
+- Added `docs/app_quality_review.md` to capture the broader product-quality review plus next recommended packs.
+- Done: decision-support service, dashboard actionability surfacing, signal list/detail UX improvement, docs refresh.
+- Left: recommendation feedback analytics, signal decay / freshness scoring, action-state filters, and deeper duplicate-entry protection by account.
+
+
+## 2026-03-27 Pack CL — P&L color coding, data freshness age colors, signal detail improvements, HOW_TO_USE refresh
+
+- Holdings performance page: P&L values on hero cards and all tables now color-coded green/red. Symbol columns link directly to holding detail. Realized % column also color-coded. Recent closed position dates use `M d H:i` format.
+- Data freshness page: Age (min) column now color-coded — green <60, yellow-emphasis ≥120, red/bold for missing. Dates use `M d H:i` format. Applied to both the stale-symbols table and the crypto diagnostics table.
+- Signal detail: Open-position banner promoted from small inline text to a full blue alert bar with a direct link to the holding. Action label badge enlarged (`fs-6`). Age badge extended: green "Fresh" badge for <1h, grey badge for 1–4h, amber text for 4–24h, yellow warning badge ≥24h.
+- HOW_TO_USE.md: Added action filter docs, age-decay explanation, paper trade list page, Journal section, Analytics additions (decision outcomes + R-multiple distribution).
+- Done: visual polish pass, docs refresh.
+
+
+## 2026-03-27 Pack CK — Paper trade list page, morning brief paper trade summary
+
+- Added a dedicated **Paper Trades** list page (`/signals/paper-trades/`) showing all open and closed simulated trades with symbol, direction, entry/exit prices, P&L, lifecycle stage, age, and stop/target levels. Accessible from the "More" dropdown in the navbar.
+- Dashboard morning brief expanded from 3 to 4 columns: the new **Paper trades** tile shows open count and flags how many need attention (stop-risk or exit-ready lifecycle stages).
+- Done: paper trade list view + template, morning brief expansion, navbar link, docs refresh.
+- Left: signal freshness composite metric, score-weight tuning UI.
+
+
+## 2026-03-27 Pack CJ — Watchlist signal display, symbol search signals, R-multiple analytics
+
+- Watchlist "Recent signal" column now shows a formatted age badge (yellow ≥24h), color-coded score via `score_color_class`, and `M d H:i` date format — consistent with the rest of the app.
+- Symbol search results now show the latest signal for each instrument inline: strategy, direction, timeframe, color-coded score, age, and total signal count. The "View signals" button shows the count.
+- Analytics page adds an **R-multiple distribution** table showing how "Yes — took it" journal entries distribute across `<0R / 0–1R / 1–2R / 2–3R / 3R+` buckets with average R per bucket and an overall average.
+- Done: watchlist signal display, symbol search enrichment, R-multiple analytics, docs refresh.
+- Left: signal freshness as a composite metric, score-weight tuning UI.
+
+
+## 2026-03-27 Pack CI — Server-side action filter, journal UX, account-scoped duplicate guard
+
+- Signals list now supports a server-side `action` URL filter (`BUY_NOW`, `WATCH_CLOSE`, `REVIEW`, `SKIP_RISK`, `HOLDING`) so filtered queues can be bookmarked and paginate correctly. The action filter bar now navigates server-side instead of only filtering the current page client-side.
+- Journal list overhauled: decision/outcome columns now color-coded (WIN=green badge, LOSS=red badge, YES=green, NO=red), win rate added to stats strip, filter panel shows active state + clear button, empty state distinguishes filter-active vs no entries.
+- Duplicate holding warning is now account-scoped: same-account duplicates get a `warning`, cross-account duplicates get an informational `info` notice so multi-account setups are handled correctly.
+- Done: server-side action filter, journal list UX, account-scoped duplicate guard, docs refresh.
+- Left: score-weight refinements, signal freshness as a composite metric, account-family reporting.
+
+
+## 2026-03-27 Pack CH — Signal staleness decay, duplicate holding protection, journal outcome analytics
+- `assess_signal_action` now degrades stale signals automatically: BUY_NOW downgrades to WATCH_CLOSE after 48 h, WATCH_CLOSE downgrades to REVIEW after 72 h, with plain-language age-based reasons.
+- Holding create now warns when an open position already exists for the same instrument, preventing silent duplicate exposure without blocking the operator.
+- Analytics page now includes a **Journal decision outcomes** table showing WIN / LOSS / breakeven counts for YES (took it), NO (passed), and Skip decisions — closing the feedback loop between journal decisions and actual outcomes.
+- Done: signal staleness decay, duplicate-holding guard, journal outcome analytics, docs refresh.
+- Left: score-weight refinements, deeper account-scoped duplicate protection, advanced signal freshness as a scored service metric.
+

@@ -1,6 +1,8 @@
 from collections import defaultdict
+from datetime import time as dtime
 import logging
 from time import perf_counter
+from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.contrib import messages
@@ -23,6 +25,7 @@ from apps.signals.services.alerts import build_alert_queue_preview, build_next_s
 from apps.signals.services.delivery_health import get_delivery_health_summary
 from apps.signals.services.lifecycle import get_trade_lifecycle_summary
 from apps.strategies.models import StrategyRunConfig
+from apps.signals.services.decision_support import assess_signal_action, build_signal_decision_summary
 from apps.signals.services.position_monitor import rank_open_positions
 from apps.signals.views import _extract_signal_filter_params
 from apps.portfolios.views import _extract_holding_filter_params
@@ -31,6 +34,16 @@ from apps.portfolios.views import _extract_holding_filter_params
 
 
 logger = logging.getLogger("apps.dashboard")
+
+_ET = ZoneInfo("America/New_York")
+
+
+def _is_market_open() -> bool:
+    from django.utils import timezone
+    now = timezone.now().astimezone(_ET)
+    if now.weekday() >= 5:
+        return False
+    return dtime(9, 30) <= now.time() <= dtime(16, 0)
 
 
 def _normalize_score(score):
@@ -183,12 +196,78 @@ def _build_trade_analytics(*, user, timeframe: str = "", strategy: str = "", min
         if eligible:
             best_bucket = sorted(eligible, key=lambda row: (-(row["win_rate"] or -1), -row["count"], row["label"]))[0]
 
+    # R-multiple distribution: journal entries where user took the trade (YES) and recorded an R
+    _R_BUCKETS = [
+        ("loss",  "< 0R",  lambda r: r < 0),
+        ("0to1",  "0 – 1R", lambda r: 0 <= r < 1),
+        ("1to2",  "1 – 2R", lambda r: 1 <= r < 2),
+        ("2to3",  "2 – 3R", lambda r: 2 <= r < 3),
+        ("3plus", "3R +",   lambda r: r >= 3),
+    ]
+    r_entries_qs = JournalEntry.objects.filter(
+        user=user,
+        decision=JournalEntry.Decision.YES,
+        realized_r__isnull=False,
+    )
+    r_bucket_map = {key: {"label": label, "count": 0, "values": []} for key, label, _ in _R_BUCKETS}
+    for entry in r_entries_qs:
+        r_val = float(entry.realized_r)
+        for key, _label, predicate in _R_BUCKETS:
+            if predicate(r_val):
+                r_bucket_map[key]["count"] += 1
+                r_bucket_map[key]["values"].append(r_val)
+                break
+    r_distribution = [
+        {
+            "label": data["label"],
+            "count": data["count"],
+            "avg_r": round(sum(data["values"]) / len(data["values"]), 2) if data["values"] else None,
+        }
+        for data in r_bucket_map.values()
+    ]
+    all_r_values = [v for data in r_bucket_map.values() for v in data["values"]]
+    avg_realized_r = round(sum(all_r_values) / len(all_r_values), 2) if all_r_values else None
+
+    # Journal decision outcomes: group by decision (YES/NO/SKIP) × outcome (WIN/LOSS/BREAKEVEN)
+    _DECISION_LABELS = {
+        JournalEntry.Decision.YES: "Yes — took it",
+        JournalEntry.Decision.NO: "No — passed",
+        JournalEntry.Decision.SKIP: "Skip / other",
+    }
+    journal_qs = JournalEntry.objects.filter(user=user).exclude(outcome=JournalEntry.Outcome.UNKNOWN)
+    journal_decision_map: dict = defaultdict(lambda: {"count": 0, "wins": 0, "losses": 0, "breakeven": 0})
+    for entry in journal_qs:
+        d = entry.decision
+        journal_decision_map[d]["count"] += 1
+        if entry.outcome == JournalEntry.Outcome.WIN:
+            journal_decision_map[d]["wins"] += 1
+        elif entry.outcome == JournalEntry.Outcome.LOSS:
+            journal_decision_map[d]["losses"] += 1
+        elif entry.outcome == JournalEntry.Outcome.BREAKEVEN:
+            journal_decision_map[d]["breakeven"] += 1
+    journal_by_decision = [
+        {
+            "label": _DECISION_LABELS.get(code, code),
+            "code": code,
+            "count": item["count"],
+            "wins": item["wins"],
+            "losses": item["losses"],
+            "breakeven": item["breakeven"],
+            "win_rate": _safe_pct(item["wins"], item["count"]),
+        }
+        for code, item in journal_decision_map.items()
+    ]
+    journal_by_decision.sort(key=lambda r: r["label"])
+
     return {
         "paper_by_bucket": paper_by_bucket,
         "paper_by_strategy": paper_by_strategy,
         "paper_by_timeframe": paper_by_timeframe,
         "outcomes_by_bucket": outcomes_by_bucket,
         "outcomes_by_strategy": outcomes_by_strategy,
+        "journal_by_decision": journal_by_decision,
+        "r_distribution": r_distribution,
+        "avg_realized_r": avg_realized_r,
         "filters": {"timeframe": timeframe, "strategy": strategy, "min_count": min_count},
         "summary": {
             "paper_closed_count": paper_total,
@@ -310,7 +389,7 @@ def home(request):
         user_signals.select_related("instrument", "strategy")
         .exclude(direction=Signal.Direction.FLAT)
         .filter(status__in=[Signal.Status.NEW, Signal.Status.REVIEWED, Signal.Status.TAKEN])
-        .order_by("-score", "-generated_at")[:8]
+        .order_by("-score", "-generated_at")[:20]
     )
     _mark("signals", t0)
 
@@ -360,6 +439,59 @@ def home(request):
     )
     pending_outcome_count = user_signals.filter(status=Signal.Status.NEW).exclude(outcome__status=SignalOutcome.Status.EVALUATED).count()
 
+    latest_closes = {
+        row["instrument_id"]: row["close"]
+        for row in PriceBar.objects.filter(
+            instrument_id__in={s.instrument_id for s in top_opportunities},
+            timeframe="1d",
+        ).order_by("instrument_id", "-ts").values("instrument_id", "close", "ts")
+    }
+    risk_profile = UserRiskProfile.objects.filter(user=request.user).first()
+    portfolio_exposure = summarize_portfolio_exposure(user=request.user)
+    sector_exposure = summarize_holding_sector_exposure(user=request.user)
+    held_instrument_ids = set(
+        HeldPosition.objects.filter(user=request.user, status=HeldPosition.Status.OPEN).values_list("instrument_id", flat=True)
+    )
+    correlation_context = build_signal_correlation_context(user=request.user, risk_profile=risk_profile)
+    enriched_top_opportunities = []
+    for signal in top_opportunities:
+        entry_price = getattr(getattr(signal, "trade_plan", None), "entry_price", None) or latest_closes.get(signal.instrument_id)
+        suggested_qty = getattr(getattr(signal, "trade_plan", None), "suggested_qty", None)
+        guardrails = assess_signal_guardrails(
+            user=request.user,
+            signal=signal,
+            entry_price=entry_price,
+            suggested_qty=suggested_qty,
+            portfolio_exposure=portfolio_exposure,
+            sector_exposure=sector_exposure,
+            correlation_context=correlation_context,
+        )
+        decision = assess_signal_action(
+            signal=signal,
+            guardrails=guardrails,
+            entry_price=entry_price,
+            suggested_qty=suggested_qty,
+            has_open_position=signal.instrument_id in held_instrument_ids,
+        )
+        signal.operator_decision = decision
+        signal.operator_guardrails = guardrails
+        enriched_top_opportunities.append(signal)
+    top_opportunities = sorted(enriched_top_opportunities, key=lambda s: (s.operator_decision.rank, -(float(s.score or 0)), -s.generated_at.timestamp()))[:8]
+    top_opportunity_summary = build_signal_decision_summary([s.operator_decision for s in top_opportunities])
+
+    # Quick paper-trade performance summary
+    t0 = perf_counter()
+    open_trades_qs = PaperTrade.objects.filter(opened_by=request.user, status=PaperTrade.Status.OPEN)
+    paper_open_count = open_trades_qs.count()
+    paper_at_risk_count = open_trades_qs.filter(
+        lifecycle_stage__in=[PaperTrade.LifecycleStage.STOP_RISK, PaperTrade.LifecycleStage.EXIT_READY]
+    ).count()
+    closed_trades = PaperTrade.objects.filter(opened_by=request.user, status=PaperTrade.Status.CLOSED)
+    paper_closed_count = closed_trades.count()
+    paper_wins = closed_trades.filter(pnl_amount__gt=0).count() if paper_closed_count else 0
+    paper_win_rate = round((paper_wins / paper_closed_count) * 100, 1) if paper_closed_count else None
+    _mark("paper_perf", t0)
+
     # Quick held-position summary (no refresh calls — just read stored values)
     open_positions_qs = HeldPosition.objects.filter(user=request.user, status=HeldPosition.Status.OPEN)
     held_open_count = open_positions_qs.count()
@@ -381,12 +513,20 @@ def home(request):
         "journal_counts": journal_counts,
         "active_configs": active_configs,
         "top_opportunities": top_opportunities,
+        "top_opportunity_summary": top_opportunity_summary,
         "review_queue": review_queue,
         "recent_outcomes": recent_outcomes,
         "pending_outcome_count": pending_outcome_count,
         "held_open_count": held_open_count,
         "held_at_risk": held_at_risk,
         "account_equity": profile.account_equity if profile else None,
+        "market_is_open": _is_market_open(),
+        "paper_open_count": paper_open_count,
+        "paper_at_risk_count": paper_at_risk_count,
+        "paper_closed_count": paper_closed_count,
+        "paper_win_rate": paper_win_rate,
+        "signal_preset_widgets": _build_signal_preset_widgets(request.user),
+        "holding_preset_widgets": _build_holding_preset_widgets(request.user),
     }
     total_ms = int((perf_counter() - started) * 1000)
     slow_ms = int(getattr(settings, "DASHBOARD_HOME_SLOW_MS", 2000) or 2000)
@@ -539,11 +679,22 @@ def symbol_search(request):
             .order_by("-ts")
             .first()
         )
+        latest_signal = (
+            Signal.objects.filter(instrument=instrument, created_by=request.user)
+            .select_related("strategy")
+            .order_by("-generated_at")
+            .first()
+        )
+        signal_count = Signal.objects.filter(
+            instrument=instrument, created_by=request.user
+        ).count()
         results.append({
             "instrument": instrument,
             "latest_bar": latest_bar,
             "in_watchlist": instrument.symbol in watchlist_symbol_set,
             "is_held": instrument.symbol in held_symbol_set,
+            "latest_signal": latest_signal,
+            "signal_count": signal_count,
         })
 
     return render(request, "dashboard/symbol_search.html", {

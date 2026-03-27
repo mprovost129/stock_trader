@@ -1,12 +1,63 @@
 {% extends "base.html" %}
+{% load dashboard_extras %}
 
 {% block title %}Signal {{ signal.instrument.symbol }}{% endblock %}
 
 {% block content %}
+  {% if has_open_position %}
+  <div class="alert alert-info py-2 d-flex align-items-center gap-2 mb-3">
+    <i class="bi bi-briefcase-fill"></i>
+    <span>You already have an open held position for <strong>{{ signal.instrument.symbol }}</strong>. Review your holding before considering a new entry.</span>
+    <a class="btn btn-sm btn-outline-primary ms-auto" href="{% url 'portfolios:holdings' %}?instrument={{ signal.instrument.symbol }}">View holding</a>
+  </div>
+  {% endif %}
+  <div class="row g-3 mb-3">
+    <div class="col-lg-7">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="text-muted small mb-1">Operator action</div>
+          <div class="d-flex align-items-center gap-2 mb-2">
+            {% if decision.code == "BUY_NOW" %}<span class="badge text-bg-success fs-6">{{ decision.label }}</span>
+            {% elif decision.code == "WATCH_CLOSE" %}<span class="badge text-bg-warning fs-6">{{ decision.label }}</span>
+            {% elif decision.code == "SKIP_RISK" %}<span class="badge text-bg-danger fs-6">{{ decision.label }}</span>
+            {% elif decision.code == "HOLDING" %}<span class="badge text-bg-secondary fs-6">{{ decision.label }}</span>
+            {% else %}<span class="badge text-bg-light border text-dark fs-6">{{ decision.label }}</span>{% endif %}
+          </div>
+          <div class="mb-1">{{ decision.reason }}</div>
+          <div class="small text-muted">Next step: {{ decision.next_step }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-5">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="text-muted small mb-1">Guardrail posture</div>
+          <div class="mb-2">
+            {% if guardrails.overall_posture == "OVER" %}<span class="badge text-bg-danger">{{ guardrails.overall_label }}</span>
+            {% elif guardrails.overall_posture == "NEAR" %}<span class="badge text-bg-warning">{{ guardrails.overall_label }}</span>
+            {% elif guardrails.overall_posture == "OK" %}<span class="badge text-bg-success">{{ guardrails.overall_label }}</span>
+            {% else %}<span class="badge text-bg-secondary">{{ guardrails.overall_label }}</span>{% endif %}
+          </div>
+          <div class="small text-muted">{{ guardrails.overall_reason }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
   <div class="d-flex align-items-center justify-content-between mb-3">
     <div>
       <h1 class="h3 mb-1">{{ signal.instrument.symbol }} — {{ signal.strategy.name }}</h1>
-      <div class="text-muted small">{{ signal.generated_at|date:"Y-m-d H:i" }} • {{ signal.timeframe }} • {{ signal.direction }} • {{ signal.signal_label|default:signal.signal_kind }} • {{ signal.status }}</div>
+      <div class="text-muted small">
+        {{ signal.generated_at|date:"Y-m-d H:i" }}
+        {% with age=signal.generated_at|hours_old %}
+          {% if age is not None %}
+            {% if age >= 24 %}<span class="badge text-bg-warning ms-1" title="Signal is over 24 hours old — action labels may be downgraded">{{ age }}h old</span>
+            {% elif age >= 4 %}<span class="badge text-bg-secondary ms-1">{{ age }}h ago</span>
+            {% elif age >= 1 %}<span class="text-success small ms-1">({{ age }}h ago)</span>
+            {% else %}<span class="badge text-bg-success ms-1">Fresh</span>{% endif %}
+          {% endif %}
+        {% endwith %}
+        • {{ signal.timeframe }} • {{ signal.direction }} • {{ signal.signal_label|default:signal.signal_kind }} • {{ signal.status }}
+      </div>
     </div>
     <div class="d-flex gap-2">
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'signals:list' %}">All signals</a>
@@ -36,12 +87,21 @@
         <div class="card-body">
           <h2 class="h5">Review actions</h2>
           <div class="d-flex flex-wrap gap-2 mb-3">
+            {% if not has_open_position %}
+              <a class="btn btn-sm btn-success"
+                 href="{% url 'portfolios:holding_add' %}?instrument_id={{ signal.instrument_id }}{% if signal.trade_plan.entry_price %}&average_entry_price={{ signal.trade_plan.entry_price }}{% endif %}{% if signal.trade_plan.suggested_qty %}&quantity={{ signal.trade_plan.suggested_qty }}{% endif %}"
+                 title="Open the Add position form pre-filled from this signal's trade plan">
+                <i class="bi bi-plus-circle me-1"></i>Record entry
+              </a>
+            {% else %}
+              <span class="btn btn-sm btn-outline-success disabled" title="Position already open for this symbol">Already held</span>
+            {% endif %}
             <form method="post" action="{% url 'signals:mark_reviewed' signal.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-primary">Mark reviewed</button></form>
             <form method="post" action="{% url 'signals:skip_signal' signal.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary">Skip signal</button></form>
             {% if not paper_trade %}
-              <form method="post" action="{% url 'signals:open_paper_trade' signal.pk %}">{% csrf_token %}<button class="btn btn-sm btn-success">Open paper trade</button></form>
+              <form method="post" action="{% url 'signals:open_paper_trade' signal.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-success">Open paper trade</button></form>
             {% endif %}
-            <a class="btn btn-sm btn-primary" href="{% url 'journal:new_for_signal' signal.pk %}">Record decision (Yes/No)</a>
+            <a class="btn btn-sm btn-outline-primary" href="{% url 'journal:new_for_signal' signal.pk %}">Record decision (Yes/No)</a>
           </div>
           <ul class="list-group list-group-flush mb-0">
             {% for label, ok in checklist %}
@@ -232,14 +292,38 @@
 
       <div class="card shadow-sm mb-3">
         <div class="card-body">
-          <h2 class="h5">Latest journal decision</h2>
+          <h2 class="h5 mb-3">Journal decision</h2>
           {% if latest_journal %}
-            <div><strong>{{ latest_journal.decision }}</strong> — {{ latest_journal.outcome }}</div>
-            <div class="small text-muted mb-2">{{ latest_journal.decided_at|date:"Y-m-d H:i" }}</div>
-            <div class="small">{{ latest_journal.notes|default:"No notes." }}</div>
-          {% else %}
-            <div class="text-muted">No journal decision recorded yet.</div>
+            <div class="alert alert-light border py-2 small mb-3">
+              <strong>{{ latest_journal.decision }}</strong>
+              {% if latest_journal.outcome %} — {{ latest_journal.outcome }}{% endif %}
+              <span class="text-muted ms-2">{{ latest_journal.decided_at|date:"M d H:i" }}</span>
+              {% if latest_journal.notes %}<div class="mt-1 text-muted">{{ latest_journal.notes }}</div>{% endif %}
+            </div>
           {% endif %}
+          <form method="post" action="{% url 'journal:new_for_signal' signal.pk %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{% url 'signals:detail' signal.pk %}">
+            <div class="row g-2 mb-2">
+              <div class="col-sm-4">
+                <label class="form-label small text-muted mb-1">Decision</label>
+                {{ journal_form.decision }}
+              </div>
+              <div class="col-sm-4">
+                <label class="form-label small text-muted mb-1">Outcome</label>
+                {{ journal_form.outcome }}
+              </div>
+              <div class="col-sm-4">
+                <label class="form-label small text-muted mb-1">Realized R</label>
+                {{ journal_form.realized_r }}
+              </div>
+            </div>
+            <div class="mb-2">
+              <label class="form-label small text-muted mb-1">Notes</label>
+              {{ journal_form.notes }}
+            </div>
+            <button class="btn btn-sm btn-primary">Save journal entry</button>
+          </form>
         </div>
       </div>
 

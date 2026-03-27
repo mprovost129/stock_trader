@@ -28,13 +28,18 @@ def list_entries(request):
     if tag:
         entries_qs = entries_qs.filter(tags__icontains=tag)
 
-    stats = JournalEntry.objects.filter(user=request.user).aggregate(
+    raw_stats = JournalEntry.objects.filter(user=request.user).aggregate(
         total=Count("id"),
         yes=Count("id", filter=Q(decision=JournalEntry.Decision.YES)),
         no=Count("id", filter=Q(decision=JournalEntry.Decision.NO)),
         wins=Count("id", filter=Q(outcome=JournalEntry.Outcome.WIN)),
         losses=Count("id", filter=Q(outcome=JournalEntry.Outcome.LOSS)),
+        known_outcomes=Count("id", filter=~Q(outcome=JournalEntry.Outcome.UNKNOWN)),
     )
+    stats = dict(raw_stats)
+    known = stats.get("known_outcomes") or 0
+    wins = stats.get("wins") or 0
+    stats["win_rate"] = round((wins / known) * 100, 1) if known else None
 
     entries = entries_qs[:200]
     return render(
@@ -67,7 +72,8 @@ def new_for_signal(request, signal_id: int):
             elif entry.decision == JournalEntry.Decision.NO:
                 signal.status = Signal.Status.REJECTED
                 signal.save(update_fields=["status"])
-            return redirect("journal:list")
+            next_url = request.POST.get("next")
+            return redirect(next_url) if next_url else redirect("journal:list")
     else:
         form = JournalEntryForm()
 

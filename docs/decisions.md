@@ -698,3 +698,16 @@ Attachment-backed execution evidence needs an explicit lifecycle workflow. We ke
 - Decision: the health score page should support persistent snapshots because a request-time score alone does not tell Mike whether posture is improving or deteriorating.
 - Added `PortfolioHealthSnapshot` plus a CLI command and in-app save actions rather than auto-scheduling snapshots immediately.
 - This keeps the first version explicit and operator-controlled while still creating an audit trail for future automation.
+
+## Signal decision rule
+Raw signals should not require the operator to mentally translate score + guardrails + ownership state into a next action. The app should do that translation and surface a single plain-language label — **Buy now**, **Watch closely**, **Review**, **Skip — risk cap**, or **Already held** — so Mike can triage the queue without opening every row. The label and its rationale should appear on the list, on the dashboard, and on the detail page.
+
+## 2026-03-27 Pack CG — Signal decision support layer
+- Added a reusable signal decision-support service that converts raw signal state into plain-language operator actions such as **Buy now**, **Watch closely**, **Review**, **Skip — risk cap**, and **Already held**.
+- Dashboard top opportunities are now ranked with actionability in mind instead of score alone, and the homepage now shows a simple decision mix for the current top queue.
+- Signals list now surfaces action labels plus next-step guidance so Mike can work from the page without opening every row first.
+- Signal detail now shows an operator-action card and guardrail posture card so each setup explains what to do next and why.
+- Added `docs/app_quality_review.md` to capture the broader product-quality review plus next recommended packs.
+- Done: decision-support service, dashboard actionability surfacing, signal list/detail UX improvement, docs refresh.
+- Left: recommendation feedback analytics, signal decay / freshness scoring, action-state filters, and deeper duplicate-entry protection by account.
+

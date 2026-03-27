@@ -105,6 +105,68 @@
     </div>
   </div>
 
+  <div class="row g-3 mb-3">
+    <div class="col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h2 class="h5 mb-1">Journal decision outcomes</h2>
+          <p class="text-muted small mb-3">Of journal entries with a known outcome, how did your YES / NO / Skip decisions pan out?</p>
+          {% if analytics.journal_by_decision %}
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead><tr><th>Decision</th><th>Count</th><th>Wins</th><th>Losses</th><th>B/E</th><th>Win rate</th></tr></thead>
+                <tbody>
+                  {% for row in analytics.journal_by_decision %}
+                    <tr>
+                      <td>{{ row.label }}</td>
+                      <td>{{ row.count }}</td>
+                      <td class="text-success">{{ row.wins }}</td>
+                      <td class="text-danger">{{ row.losses }}</td>
+                      <td class="text-muted">{{ row.breakeven }}</td>
+                      <td>{% if row.win_rate is not None %}{{ row.win_rate }}%{% else %}—{% endif %}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="text-muted small">No journal entries with known outcomes yet.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h2 class="h5 mb-1">R-multiple distribution</h2>
+          <p class="text-muted small mb-3">Realized R-multiples for "Yes — took it" journal entries.{% if analytics.avg_realized_r is not None %} Average: <strong>{{ analytics.avg_realized_r }}R</strong>.{% endif %}</p>
+          {% if analytics.r_distribution %}
+            {% with total_r=0 %}
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead><tr><th>Bucket</th><th>Count</th><th>Avg R</th></tr></thead>
+                <tbody>
+                  {% for row in analytics.r_distribution %}
+                    {% if row.count > 0 %}
+                    <tr>
+                      <td>{{ row.label }}</td>
+                      <td>{{ row.count }}</td>
+                      <td class="{% if row.avg_r is not None and row.avg_r < 0 %}text-danger{% elif row.avg_r is not None and row.avg_r > 0 %}text-success{% endif %}">{% if row.avg_r is not None %}{{ row.avg_r }}R{% else %}—{% endif %}</td>
+                    </tr>
+                    {% endif %}
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% endwith %}
+          {% else %}
+            <div class="text-muted small">No realized R-multiples recorded yet. Log R values in your journal to track risk/reward.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="row g-3">
     <div class="col-lg-6">
       <div class="card shadow-sm h-100">

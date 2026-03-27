@@ -1,6 +1,7 @@
 from decimal import Decimal, InvalidOperation
 
 from django.db import models
+from django.utils import timezone
 from django.db.models import OuterRef, Subquery
 from django.db.models.functions import Coalesce
 
@@ -12,6 +13,7 @@ from django.urls import reverse
 from django.utils.http import urlencode
 from django.shortcuts import get_object_or_404, redirect, render
 
+from apps.journal.forms import JournalEntryForm
 from apps.marketdata.models import PriceBar
 from apps.portfolios.forms import SavedFilterPresetForm
 from apps.portfolios.models import HeldPosition, SavedFilterPreset, UserRiskProfile
@@ -20,6 +22,7 @@ from apps.portfolios.services import assess_signal_guardrails, build_signal_corr
 
 from .models import PaperTrade, PositionAlert, Signal, SignalOutcome
 from .services.alerts import explain_alert_eligibility
+from .services.decision_support import assess_signal_action, build_signal_decision_summary
 from .services.lifecycle import sync_trade_lifecycle
 from .services.paper_trading import close_paper_trade, open_paper_trade_from_signal
 
@@ -37,6 +40,7 @@ SIGNAL_FILTER_FIELDS = (
     "max_price",
     "min_score",
     "max_score",
+    "action",
 )
 
 
@@ -166,6 +170,18 @@ def list_signals(request):
     if max_score is not None:
         qs = qs.filter(score__lte=max_score)
 
+    action_filter = request.GET.get("action", "").strip()
+    if action_filter == "BUY_NOW":
+        qs = qs.filter(status=Signal.Status.NEW, score__gte=85).exclude(instrument_id__in=held_instrument_ids)
+    elif action_filter == "WATCH_CLOSE":
+        qs = qs.filter(status=Signal.Status.NEW, score__gte=75).exclude(instrument_id__in=held_instrument_ids)
+    elif action_filter == "REVIEW":
+        qs = qs.filter(status=Signal.Status.NEW, score__gte=60, score__lt=75)
+    elif action_filter == "SKIP_RISK":
+        qs = qs.filter(status=Signal.Status.NEW).exclude(trade_plan=None)
+    elif action_filter == "HOLDING":
+        qs = qs.filter(status=Signal.Status.NEW, instrument_id__in=held_instrument_ids)
+
     paginator = Paginator(qs, 50)
     page_number = request.GET.get("page", 1)
     page_obj = paginator.get_page(page_number)
@@ -185,6 +201,8 @@ def list_signals(request):
     }
 
     allocation_preview = {}
+    signal_decisions = {}
+    decision_rows = []
     correlation_context = build_signal_correlation_context(user=request.user, risk_profile=risk_profile)
     guardrail_summary = {"OK": 0, "NEAR": 0, "OVER": 0, "NO_PROFILE": 0, "NO_PLAN": 0}
     for signal in signals:
@@ -210,14 +228,25 @@ def list_signals(request):
             correlation_context=correlation_context,
         )
         guardrail_summary[guardrails["overall_posture"]] = guardrail_summary.get(guardrails["overall_posture"], 0) + 1
+        decision = assess_signal_action(
+            signal=signal,
+            guardrails=guardrails,
+            entry_price=entry_price,
+            suggested_qty=suggested_qty,
+            has_open_position=signal.instrument_id in held_instrument_ids,
+        )
+        decision_rows.append(decision)
         allocation_preview[signal.pk] = {
             "suggested_qty": suggested_qty,
             "suggested_cost": suggested_cost,
             "suggested_weight_pct": suggested_weight_pct,
             "fits_headroom": fits_headroom,
             "guardrails": guardrails,
+            "decision": decision,
         }
+        signal_decisions[signal.pk] = decision
     guardrail_summary["MISSING"] = guardrail_summary.get("NO_PROFILE", 0) + guardrail_summary.get("NO_PLAN", 0)
+    decision_summary = build_signal_decision_summary(decision_rows)
     timeframe_choices = list(user_signals.order_by().values_list("timeframe", flat=True).distinct())
     current_filters = _extract_signal_filter_params(request.GET)
     saved_presets = list(
@@ -239,6 +268,7 @@ def list_signals(request):
             "direction": direction or "",
             "timeframe": timeframe or "",
             "ownership_state": ownership_state or "",
+            "action_filter": action_filter,
             "filter_error": filter_error,
             "score_summary": score_summary,
             "direction_choices": Signal.Direction.choices,
@@ -249,6 +279,8 @@ def list_signals(request):
             "saved_preset_form": saved_preset_form,
             "active_preset": active_preset,
             "allocation_preview": allocation_preview,
+            "signal_decisions": signal_decisions,
+            "decision_summary": decision_summary,
             "risk_profile": risk_profile,
             "account_equity": account_equity,
             "risk_pct": risk_pct,
@@ -260,6 +292,51 @@ def list_signals(request):
             "watchlist_instrument_ids": watchlist_instrument_ids,
         },
     )
+
+
+@login_required
+def paper_trade_list(request):
+    status_filter = (request.GET.get("status") or "OPEN").upper()
+    if status_filter not in ("OPEN", "CLOSED", "ALL"):
+        status_filter = "OPEN"
+
+    qs = (
+        PaperTrade.objects.filter(opened_by=request.user)
+        .select_related("signal", "signal__instrument", "signal__strategy")
+        .order_by("-entry_time")
+    )
+    if status_filter == "OPEN":
+        qs = qs.filter(status=PaperTrade.Status.OPEN)
+    elif status_filter == "CLOSED":
+        qs = qs.filter(status=PaperTrade.Status.CLOSED)
+
+    trades = list(qs[:200])
+    now = timezone.now()
+    for trade in trades:
+        delta = now - trade.entry_time
+        trade._age_hours = int(delta.total_seconds() // 3600)
+        trade._age_days = delta.days
+
+    open_qs = PaperTrade.objects.filter(opened_by=request.user, status=PaperTrade.Status.OPEN)
+    open_count = open_qs.count()
+    stages_at_risk = open_qs.filter(
+        lifecycle_stage__in=[PaperTrade.LifecycleStage.STOP_RISK, PaperTrade.LifecycleStage.EXIT_READY]
+    ).count()
+
+    closed_qs = PaperTrade.objects.filter(opened_by=request.user, status=PaperTrade.Status.CLOSED)
+    closed_count = closed_qs.count()
+    closed_wins = closed_qs.filter(pnl_amount__gt=0).count()
+    win_rate = round((closed_wins / closed_count) * 100, 1) if closed_count else None
+
+    return render(request, "signals/paper_trade_list.html", {
+        "trades": trades,
+        "status_filter": status_filter,
+        "open_count": open_count,
+        "stages_at_risk": stages_at_risk,
+        "closed_count": closed_count,
+        "closed_wins": closed_wins,
+        "win_rate": win_rate,
+    })
 
 
 @login_required
@@ -340,6 +417,29 @@ def detail(request, pk: int):
     alert_deliveries = signal.alert_deliveries.order_by("-created_at")[:10]
     outcome = getattr(signal, "outcome", None)
     alert_explanation = explain_alert_eligibility(signal=signal) if hasattr(signal, "trade_plan") else None
+    latest_bar = PriceBar.objects.filter(instrument=signal.instrument, timeframe=signal.timeframe).order_by("-ts").first()
+    entry_price = getattr(getattr(signal, "trade_plan", None), "entry_price", None) or getattr(latest_bar, "close", None)
+    suggested_qty = getattr(getattr(signal, "trade_plan", None), "suggested_qty", None)
+    risk_profile = UserRiskProfile.objects.filter(user=request.user).first()
+    portfolio_exposure = summarize_portfolio_exposure(user=request.user)
+    sector_exposure = summarize_holding_sector_exposure(user=request.user)
+    guardrails = assess_signal_guardrails(
+        user=request.user,
+        signal=signal,
+        entry_price=entry_price,
+        suggested_qty=suggested_qty,
+        portfolio_exposure=portfolio_exposure,
+        sector_exposure=sector_exposure,
+        correlation_context=build_signal_correlation_context(user=request.user, risk_profile=risk_profile),
+    )
+    has_open_position = HeldPosition.objects.filter(user=request.user, instrument=signal.instrument, status=HeldPosition.Status.OPEN).exists()
+    decision = assess_signal_action(
+        signal=signal,
+        guardrails=guardrails,
+        entry_price=entry_price,
+        suggested_qty=suggested_qty,
+        has_open_position=has_open_position,
+    )
     paper_trade = getattr(signal, "paper_trade", None)
     position_alerts = paper_trade.position_alerts.order_by("-created_at")[:10] if paper_trade else []
     lifecycle_snapshot = None
@@ -360,12 +460,16 @@ def detail(request, pk: int):
             "latest_journal": latest_journal,
             "alert_deliveries": alert_deliveries,
             "checklist": checklist,
+            "decision": decision,
+            "guardrails": guardrails,
+            "has_open_position": has_open_position,
             "outcome": outcome,
             "alert_explanation": alert_explanation,
             "paper_trade": paper_trade,
             "position_alerts": position_alerts,
             "lifecycle_snapshot": lifecycle_snapshot,
             "in_watchlist": signal.instrument_id in watchlist_instrument_ids,
+            "journal_form": JournalEntryForm(),
         },
     )
 
@@ -378,7 +482,8 @@ def mark_reviewed(request, pk: int):
     signal.status = Signal.Status.REVIEWED
     signal.save(update_fields=["status"])
     messages.success(request, f"Marked {signal.instrument.symbol} as reviewed.")
-    return redirect("signals:detail", pk=pk)
+    next_url = request.POST.get("next") or request.GET.get("next")
+    return redirect(next_url) if next_url else redirect("signals:detail", pk=pk)
 
 
 @login_required
@@ -389,7 +494,8 @@ def skip_signal(request, pk: int):
     signal.status = Signal.Status.SKIPPED
     signal.save(update_fields=["status"])
     messages.success(request, f"Marked {signal.instrument.symbol} as skipped.")
-    return redirect("signals:detail", pk=pk)
+    next_url = request.POST.get("next") or request.GET.get("next")
+    return redirect(next_url) if next_url else redirect("signals:detail", pk=pk)
 
 
 @login_required

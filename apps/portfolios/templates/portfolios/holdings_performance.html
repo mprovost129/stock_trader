@@ -17,9 +17,9 @@
 </div>
 
 <div class="row g-3 mb-3">
-  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Realized P&amp;L</div><div class="display-6">${{ performance.total_realized_pnl }}</div><div class="small text-muted mt-2">Closed or trimmed gains/losses already recorded.</div></div></div></div>
-  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Unrealized P&amp;L</div><div class="display-6">${{ performance.total_unrealized_pnl }}</div><div class="small text-muted mt-2">{% if performance.unrealized_return_pct is not None %}{{ performance.unrealized_return_pct }}% on open cost basis{% else %}No open holdings yet{% endif %}</div></div></div></div>
-  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Realized win rate</div><div class="display-6">{% if performance.realized_win_rate is not None %}{{ performance.realized_win_rate }}%{% else %}—{% endif %}</div><div class="small text-muted mt-2">{{ performance.winning_realized_positions }} wins / {{ performance.realized_positions_count }} realized positions</div></div></div></div>
+  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Realized P&amp;L</div><div class="display-6 {% if performance.total_realized_pnl > 0 %}text-success{% elif performance.total_realized_pnl < 0 %}text-danger{% endif %}">${{ performance.total_realized_pnl }}</div><div class="small text-muted mt-2">Closed or trimmed gains/losses already recorded.</div></div></div></div>
+  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Unrealized P&amp;L</div><div class="display-6 {% if performance.total_unrealized_pnl > 0 %}text-success{% elif performance.total_unrealized_pnl < 0 %}text-danger{% endif %}">${{ performance.total_unrealized_pnl }}</div><div class="small text-muted mt-2">{% if performance.unrealized_return_pct is not None %}<span class="{% if performance.unrealized_return_pct > 0 %}text-success{% elif performance.unrealized_return_pct < 0 %}text-danger{% endif %}">{{ performance.unrealized_return_pct }}%</span> on open cost basis{% else %}No open holdings yet{% endif %}</div></div></div></div>
+  <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Realized win rate</div><div class="display-6 {% if performance.realized_win_rate is not None and performance.realized_win_rate >= 50 %}text-success{% elif performance.realized_win_rate is not None %}text-danger{% endif %}">{% if performance.realized_win_rate is not None %}{{ performance.realized_win_rate }}%{% else %}—{% endif %}</div><div class="small text-muted mt-2">{{ performance.winning_realized_positions }} wins / {{ performance.realized_positions_count }} realized positions</div></div></div></div>
   <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-muted small">Open market value</div><div class="display-6">${{ exposure.total_market_value|default:0 }}</div><div class="small text-muted mt-2">{% if exposure.net_exposure_pct is not None %}{{ exposure.net_exposure_pct }}% net exposure{% else %}No account equity set{% endif %}</div></div></div></div>
 </div>
 
@@ -35,9 +35,9 @@
             <tbody>
               {% for item in performance.top_unrealized_winners %}
               <tr>
-                <td>{{ item.position.instrument.symbol }}</td>
-                <td>${{ item.unrealized_pnl }}</td>
-                <td>{% if item.unrealized_pct is not None %}{{ item.unrealized_pct }}%{% else %}—{% endif %}</td>
+                <td class="fw-semibold"><a href="{% url 'portfolios:holding_detail' item.position.pk %}">{{ item.position.instrument.symbol }}</a></td>
+                <td class="text-success">${{ item.unrealized_pnl }}</td>
+                <td class="text-success">{% if item.unrealized_pct is not None %}{{ item.unrealized_pct }}%{% else %}—{% endif %}</td>
                 <td>${{ item.market_value }}</td>
                 <td><a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holding_detail' item.position.pk %}">Open</a></td>
               </tr>
@@ -62,9 +62,9 @@
             <tbody>
               {% for item in performance.top_unrealized_losers %}
               <tr>
-                <td>{{ item.position.instrument.symbol }}</td>
-                <td>${{ item.unrealized_pnl }}</td>
-                <td>{% if item.unrealized_pct is not None %}{{ item.unrealized_pct }}%{% else %}—{% endif %}</td>
+                <td class="fw-semibold"><a href="{% url 'portfolios:holding_detail' item.position.pk %}">{{ item.position.instrument.symbol }}</a></td>
+                <td class="text-danger">${{ item.unrealized_pnl }}</td>
+                <td class="text-danger">{% if item.unrealized_pct is not None %}{{ item.unrealized_pct }}%{% else %}—{% endif %}</td>
                 <td>${{ item.market_value }}</td>
                 <td><a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holding_detail' item.position.pk %}">Open</a></td>
               </tr>
@@ -92,11 +92,11 @@
             <tbody>
               {% for item in performance.top_realized_winners %}
               <tr>
-                <td>{{ item.position.instrument.symbol }}</td>
-                <td>${{ item.realized_pnl }}</td>
-                <td>{% if item.realized_pct is not None %}{{ item.realized_pct }}%{% else %}—{% endif %}</td>
+                <td class="fw-semibold"><a href="{% url 'portfolios:holding_detail' item.position.pk %}">{{ item.position.instrument.symbol }}</a></td>
+                <td class="{% if item.realized_pnl > 0 %}text-success{% elif item.realized_pnl < 0 %}text-danger{% endif %}">${{ item.realized_pnl }}</td>
+                <td class="{% if item.realized_pct is not None and item.realized_pct > 0 %}text-success{% elif item.realized_pct is not None and item.realized_pct < 0 %}text-danger{% endif %}">{% if item.realized_pct is not None %}{{ item.realized_pct }}%{% else %}—{% endif %}</td>
                 <td>{{ item.realized_quantity }}</td>
-                <td>{{ item.position.get_status_display }}</td>
+                <td class="small text-muted">{{ item.position.get_status_display }}</td>
                 <td><a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holding_detail' item.position.pk %}">Open</a></td>
               </tr>
               {% endfor %}
@@ -121,7 +121,7 @@
               {% for position in performance.recent_closed_positions %}
               <tr>
                 <td>{{ position.instrument.symbol }}</td>
-                <td>{{ position.closed_at|date:"Y-m-d H:i" }}</td>
+                <td class="text-nowrap text-muted small">{{ position.closed_at|date:"M d H:i" }}</td>
                 <td>{{ position.close_price|default:"—" }}</td>
                 <td><a class="btn btn-sm btn-outline-secondary" href="{% url 'portfolios:holding_detail' position.pk %}">Open</a></td>
               </tr>

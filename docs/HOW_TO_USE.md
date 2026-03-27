@@ -185,14 +185,27 @@ When the scheduler finds a qualifying signal it sends a message to your Discord 
 ### Step 2 — Review the signal in the UI
 
 Open the app in your browser, go to **Signals**, and find the alert. Each signal shows:
+- An **action label** — plain-language guidance on what to do next (see below)
+- A color-coded **age badge** — green "Fresh" (<1h), grey (1–4h), amber (4–24h), yellow warning (>24h). Stale signals are automatically downgraded: BUY_NOW → Watch closely after 48h, Watch closely → Review after 72h.
 - The full score breakdown by component
 - The suggested trade plan with position size calculated from your risk profile
 - A **Guardrails** column showing whether the suggested trade fits your concentration limits
+
+**Action labels:**
+- `Buy now` — strong setup (score ≥85), fits risk guardrails, not already held
+- `Watch closely` — good setup (score ≥75) but timing or confirmation is not ideal yet
+- `Review` — score or guardrail posture requires a closer look before acting
+- `Skip — risk cap` — setup is valid but the position would breach a concentration or exposure limit
+- `Already held` — you already have this symbol open; no new entry needed
+
+You can filter the Signals list by action label using the **Action** dropdown in the filter panel — filtered views persist in the URL, can be saved as presets, and paginate across all pages. Keyboard shortcuts: `j`/`k` navigate rows, `r` mark reviewed, `s` skip, `Enter` open detail, `?` show help.
 
 Guardrail values:
 - `Fits` — the trade fits within your cash headroom, position cap, and sector cap
 - `Near` — it fits but leaves little room under one limit
 - `Over` — the trade would push you past a concentration guardrail; review before entering
+
+The signal detail page shows a full **operator-action card** (with larger badge) explaining what the app recommends and why, plus a **guardrail posture card** summarizing all active limits for that candidate. If you already hold the symbol, a prominent blue alert bar appears at the top linking directly to your holding.
 
 ### Step 3 — Decide and act
 
@@ -217,6 +230,8 @@ The scheduler syncs all open paper trades every cycle. When a paper trade's pric
 ```bash
 python manage.py close_paper_trade --trade-id <id> --exit-price 123.45
 ```
+
+To see all your paper trades in one place, open **More → Paper trades** in the nav. The page shows open and closed trades with entry/exit prices, P&L, lifecycle stage (Stop risk / Exit ready / Target hit), and age. Trades in Stop risk or Exit ready stage are flagged in the Dashboard morning brief. Open a paper trade from the signal detail page.
 
 ### Real held positions
 
@@ -311,12 +326,26 @@ Open **Allocation Controls → Ops Command Center** for a single-page view of ev
 
 ---
 
+## Journal
+
+After acting on (or passing on) a signal, open the signal detail page and use the inline journal form at the bottom to record your decision. Fields:
+- **Decision** — Yes (took it), No (passed), Skip/Other
+- **Outcome** — Win / Loss / Breakeven / Unknown (fill in after the trade closes)
+- **Realized R** — optional risk-multiple (e.g. 1.5 means you captured 1.5× your initial risk)
+- **Notes** — why you took or skipped the signal
+
+View all journal entries under **More → Journal**. Entries are color-coded by decision (green=Yes, red=No) and outcome (green badge=Win, red=Loss). Use the filter panel to slice by decision, outcome, or tag.
+
+---
+
 ## Analytics
 
-Open **Analytics** in the nav to review historical performance:
+Open **More → Analytics** to review historical performance:
 - Filter by timeframe, strategy, and minimum sample size
 - Compare closed paper trades by score bucket to see if higher scores actually perform better
 - Compare signal outcomes by strategy and timeframe
+- **Journal decision outcomes** — see how often Yes/No/Skip decisions led to wins vs losses
+- **R-multiple distribution** — see how your "Yes — took it" entries distributed across `<0R / 0–1R / 1–2R / 2–3R / 3R+` buckets with average R per bucket
 - Identify whether your score thresholds are calibrated correctly
 
 ---
@@ -327,22 +356,22 @@ If you prefer to drive the app manually instead of leaving the scheduler running
 
 ```bash
 # Run one complete scan + alert + monitoring cycle
-python manage.py run_operator_cycle --username <you> --max-symbols 25
+python manage.py run_operator_cycle --username mprov --max-symbols 25
 
 # Dry-run the same cycle without sending alerts
-python manage.py run_operator_cycle --username <you> --dry-run --verbose-scan
+python manage.py run_operator_cycle --username mprov --dry-run --verbose-scan
 
 # See what signals are in the queue right now and why each is eligible or blocked
-python manage.py preview_alert_queue --username <you> --limit 20
+python manage.py preview_alert_queue --username mprov --limit 20
 
 # See what would go out at the next session open
-python manage.py preview_next_session_queue --username <you> --limit 10
+python manage.py preview_next_session_queue --username mprov --limit 10
 
 # Manually check delivery health
 python manage.py check_alert_delivery_health
 
 # View system health overview
-python manage.py system_health --username <you>
+python manage.py system_health --username mprov
 
 # Print this guide
 python manage.py show_operator_guide

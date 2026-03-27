@@ -196,10 +196,17 @@
                         <td>{% if item.last_close is not None %}{{ item.last_close }}{% else %}—{% endif %}</td>
                         <td>
                           {% if recent %}
-                            <a href="{% url 'signals:detail' recent.pk %}">{{ recent.generated_at|date:"Y-m-d H:i" }}</a>
-                            <div class="small text-muted">{{ recent.direction }} • {{ recent.timeframe }} • score {{ recent.score|default:"—" }}</div>
+                            {% with age=recent.generated_at|hours_old %}
+                            <a href="{% url 'signals:detail' recent.pk %}" class="small">{{ recent.generated_at|date:"M d H:i" }}</a>
+                            {% if age is not None and age >= 24 %}
+                              <span class="badge text-bg-warning ms-1" title="{{ age }}h old">{{ age }}h</span>
+                            {% elif age is not None %}
+                              <span class="text-muted small ms-1">{{ age }}h</span>
+                            {% endif %}
+                            <div class="small text-muted">{{ recent.direction }} · {{ recent.timeframe }} · <span class="{{ recent.score|score_color_class }}">{{ recent.score|default:"—" }}</span></div>
+                            {% endwith %}
                           {% else %}
-                            <span class="text-muted">No recent signal</span>
+                            <span class="text-muted small">No recent signal</span>
                           {% endif %}
                         </td>
                         <td>

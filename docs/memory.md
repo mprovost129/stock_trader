@@ -222,3 +222,13 @@ Update code first, then update docs (`memory.md`, `decisions.md`, `roadmap.md`) 
 - Added `save_portfolio_health_snapshot()` and `summarize_portfolio_health_history()` service helpers.
 - Added manual snapshot buttons on the Portfolio Health Score page and Ops Command Center.
 - Added command: `python manage.py save_portfolio_health_snapshot --username <user>`; no scheduler wiring yet.
+
+## 2026-03-27 Pack CG — Signal decision support layer
+- Added a reusable signal decision-support service that converts raw signal state into plain-language operator actions such as **Buy now**, **Watch closely**, **Review**, **Skip — risk cap**, and **Already held**.
+- Dashboard top opportunities are now ranked with actionability in mind instead of score alone, and the homepage now shows a simple decision mix for the current top queue.
+- Signals list now surfaces action labels plus next-step guidance so Mike can work from the page without opening every row first.
+- Signal detail now shows an operator-action card and guardrail posture card so each setup explains what to do next and why.
+- Added `docs/app_quality_review.md` to capture the broader product-quality review plus next recommended packs.
+- Done: decision-support service, dashboard actionability surfacing, signal list/detail UX improvement, docs refresh.
+- Left: recommendation feedback analytics, signal decay / freshness scoring, action-state filters, and deeper duplicate-entry protection by account.
+

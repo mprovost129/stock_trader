@@ -1,9 +1,71 @@
 {% extends "base.html" %}
+{% load dashboard_extras %}
 
 {% block title %}Dashboard{% endblock %}
 {% block nav_dashboard %}active{% endblock %}
 
 {% block content %}
+  {# ── Morning brief ────────────────────────────────────────────── #}
+  <div class="card border-0 shadow-sm mb-3" style="background: linear-gradient(135deg,#1a1a2e 0%,#16213e 100%); color:#f0f0f0;">
+    <div class="card-body py-3 px-4">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+        <span class="fw-semibold">
+          <i class="bi bi-sun me-2 text-warning"></i>Market brief
+        </span>
+        <span class="small {% if market_is_open %}text-success{% else %}text-secondary{% endif %}">
+          <i class="bi bi-circle-fill me-1" style="font-size:.55rem;vertical-align:middle;"></i>
+          {% if market_is_open %}Market open{% else %}Market closed{% endif %}
+        </span>
+      </div>
+      <div class="row g-3">
+        <div class="col-sm-3">
+          <div class="small opacity-75 mb-1">Act on now</div>
+          {% if top_opportunity_summary.BUY_NOW %}
+            <a href="{% url 'signals:list' %}?direction=LONG&min_score=80" class="text-decoration-none">
+              <span class="fs-5 fw-bold text-success">{{ top_opportunity_summary.BUY_NOW }}</span>
+              <span class="small ms-1 text-light opacity-75">Buy now signal{{ top_opportunity_summary.BUY_NOW|pluralize }}</span>
+            </a>
+          {% else %}
+            <span class="text-secondary small">No buy-now signals yet</span>
+          {% endif %}
+        </div>
+        <div class="col-sm-3">
+          <div class="small opacity-75 mb-1">Positions needing attention</div>
+          {% if held_at_risk %}
+            <a href="{% url 'portfolios:holdings' %}?status=OPEN" class="text-decoration-none">
+              <span class="fs-5 fw-bold text-danger">{{ held_at_risk }}</span>
+              <span class="small ms-1 text-light opacity-75">at or below stop</span>
+            </a>
+          {% elif held_open_count %}
+            <span class="text-success small"><i class="bi bi-check-circle me-1"></i>{{ held_open_count }} open — none at stop</span>
+          {% else %}
+            <span class="text-secondary small">No open positions</span>
+          {% endif %}
+        </div>
+        <div class="col-sm-3">
+          <div class="small opacity-75 mb-1">Queue &amp; performance</div>
+          <span class="small text-light">
+            {{ pending_outcome_count|default:0 }} pending review
+            {% if journal_counts.total %}
+              · {{ journal_counts.wins|default:0 }}W / {{ journal_counts.losses|default:0 }}L
+            {% endif %}
+          </span>
+        </div>
+        <div class="col-sm-3">
+          <div class="small opacity-75 mb-1">Paper trades</div>
+          {% if paper_open_count %}
+            <a href="{% url 'signals:paper_trade_list' %}" class="text-decoration-none">
+              <span class="fs-5 fw-bold {% if paper_at_risk_count %}text-warning{% else %}text-light{% endif %}">{{ paper_open_count }}</span>
+              <span class="small ms-1 text-light opacity-75">open{% if paper_at_risk_count %} · {{ paper_at_risk_count }} need attention{% endif %}</span>
+            </a>
+          {% else %}
+            <span class="text-secondary small">No open paper trades</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
   {# ── Header ──────────────────────────────────────────────────── #}
   <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
     <div>
@@ -83,6 +145,30 @@
     </div>
   </div>
 
+  {# ── Pinned preset widgets ───────────────────────────────────── #}
+  {% if signal_preset_widgets or holding_preset_widgets %}
+  <div class="d-flex flex-wrap gap-2 mb-3">
+    {% for widget in signal_preset_widgets %}
+      <a href="{% url 'signals:list' %}?{{ widget.querystring }}" class="card shadow-sm text-decoration-none" style="min-width:130px;max-width:180px;">
+        <div class="card-body py-2 px-3">
+          <div class="text-muted small text-truncate">{{ widget.preset.name }}</div>
+          <div class="fs-5 fw-bold {% if widget.count > 0 %}text-primary{% else %}text-muted{% endif %}">{{ widget.count }}</div>
+          <div class="small text-muted">signals</div>
+        </div>
+      </a>
+    {% endfor %}
+    {% for widget in holding_preset_widgets %}
+      <a href="{% url 'portfolios:holdings' %}?{{ widget.querystring }}" class="card shadow-sm text-decoration-none" style="min-width:130px;max-width:180px;">
+        <div class="card-body py-2 px-3">
+          <div class="text-muted small text-truncate">{{ widget.preset.name }}</div>
+          <div class="fs-5 fw-bold {% if widget.count > 0 %}text-primary{% else %}text-muted{% endif %}">{{ widget.count }}</div>
+          <div class="small text-muted">positions</div>
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   <div class="row g-3">
     <div class="col-lg-7">
       {# ── Top opportunities ──────────────────────────────────────── #}
@@ -93,27 +179,41 @@
             <a class="small" href="{% url 'signals:list' %}">All signals &rarr;</a>
           </div>
           {% if top_opportunities %}
+            <div class="row g-2 mb-3">
+              <div class="col-6 col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Buy now</div><div class="fw-semibold text-success">{{ top_opportunity_summary.BUY_NOW|default:0 }}</div></div></div>
+              <div class="col-6 col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Watch closely</div><div class="fw-semibold text-warning-emphasis">{{ top_opportunity_summary.WATCH_CLOSE|default:0 }}</div></div></div>
+              <div class="col-6 col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Review</div><div class="fw-semibold">{{ top_opportunity_summary.REVIEW|default:0 }}</div></div></div>
+              <div class="col-6 col-md-3"><div class="border rounded p-2 h-100"><div class="small text-muted">Risk-blocked</div><div class="fw-semibold text-danger">{{ top_opportunity_summary.SKIP_RISK|default:0 }}</div></div></div>
+            </div>
             <div class="table-responsive">
               <table class="table table-sm align-middle mb-0">
-                <thead><tr><th>Symbol</th><th>Dir</th><th>Type</th><th>Score</th><th>Generated</th></tr></thead>
+                <thead><tr><th>Symbol</th><th>Action</th><th>Dir</th><th>Score</th><th>Age</th></tr></thead>
                 <tbody>
                   {% for s in top_opportunities %}
                     <tr>
-                      <td class="fw-semibold"><a href="{% url 'signals:detail' s.pk %}">{{ s.instrument.symbol }}</a></td>
+                      <td class="fw-semibold"><a href="{% url 'signals:detail' s.pk %}" class="text-decoration-none">{{ s.instrument.symbol }}</a></td>
                       <td>
-                        {% if s.direction == "LONG" %}<span class="badge text-bg-success">Long</span>
-                        {% elif s.direction == "SHORT" %}<span class="badge text-bg-danger">Short</span>
-                        {% else %}{{ s.direction }}{% endif %}
+                        {% if s.operator_decision.code == "BUY_NOW" %}<span class="badge text-bg-success">{{ s.operator_decision.label }}</span>
+                        {% elif s.operator_decision.code == "WATCH_CLOSE" %}<span class="badge text-bg-warning">{{ s.operator_decision.label }}</span>
+                        {% elif s.operator_decision.code == "SKIP_RISK" %}<span class="badge text-bg-danger">{{ s.operator_decision.label }}</span>
+                        {% elif s.operator_decision.code == "HOLDING" %}<span class="badge text-bg-secondary">{{ s.operator_decision.label }}</span>
+                        {% else %}<span class="badge text-bg-light border text-dark">{{ s.operator_decision.label }}</span>{% endif %}
+                        <div class="small text-muted mt-1">{{ s.operator_decision.next_step }}</div>
                       </td>
-                      <td class="text-muted small">{{ s.signal_label|default:s.signal_kind }}</td>
                       <td>
-                        {% if s.score %}
-                          {% if s.score >= 80 %}<span class="text-success fw-semibold">{{ s.score }}</span>
-                          {% elif s.score >= 60 %}<span class="text-warning">{{ s.score }}</span>
-                          {% else %}{{ s.score }}{% endif %}
-                        {% endif %}
+                        {% if s.direction == "LONG" %}<span class="badge text-bg-success">L</span>
+                        {% elif s.direction == "SHORT" %}<span class="badge text-bg-danger">S</span>
+                        {% else %}<span class="badge text-bg-secondary">{{ s.direction }}</span>{% endif %}
                       </td>
-                      <td class="text-nowrap text-muted small">{{ s.generated_at|date:"Y-m-d H:i" }}</td>
+                      <td class="{{ s.score|score_color_class }}">{{ s.score|default:"—" }}</td>
+                      <td class="text-muted small text-nowrap">
+                        {% with age=s.generated_at|hours_old %}
+                          {% if age is not None %}
+                            {% if age >= 24 %}<span class="text-warning" title="{{ s.generated_at|date:'Y-m-d H:i' }}">{{ age }}h <i class="bi bi-clock-history"></i></span>
+                            {% else %}<span title="{{ s.generated_at|date:'Y-m-d H:i' }}">{{ age }}h</span>{% endif %}
+                          {% endif %}
+                        {% endwith %}
+                      </td>
                     </tr>
                   {% endfor %}
                 </tbody>
@@ -135,17 +235,31 @@
           {% if signals %}
             <div class="table-responsive">
               <table class="table table-sm align-middle mb-0">
-                <thead><tr><th>Time</th><th>Symbol</th><th>Strategy</th><th>TF</th><th>Dir</th><th>Status</th><th>Score</th></tr></thead>
+                <thead><tr><th>Symbol</th><th>Dir</th><th>Score</th><th>Status</th><th>Age</th></tr></thead>
                 <tbody>
                   {% for s in signals %}
                     <tr>
-                      <td class="text-nowrap text-muted small">{{ s.generated_at|date:"Y-m-d H:i" }}</td>
-                      <td><a href="{% url 'signals:detail' s.pk %}">{{ s.instrument.symbol }}</a></td>
-                      <td class="text-muted small">{{ s.strategy.name }}</td>
-                      <td class="text-muted small">{{ s.timeframe }}</td>
-                      <td>{{ s.direction }}</td>
-                      <td>{{ s.status }}</td>
-                      <td>{{ s.score|default:"" }}</td>
+                      <td>
+                        <a href="{% url 'signals:detail' s.pk %}" class="fw-semibold text-decoration-none">{{ s.instrument.symbol }}</a>
+                        <div class="text-muted small">{{ s.strategy.name }} · {{ s.timeframe }}</div>
+                      </td>
+                      <td>
+                        {% if s.direction == "LONG" %}<span class="badge text-bg-success">L</span>
+                        {% elif s.direction == "SHORT" %}<span class="badge text-bg-danger">S</span>
+                        {% else %}<span class="badge text-bg-secondary">{{ s.direction }}</span>{% endif %}
+                      </td>
+                      <td class="{{ s.score|score_color_class }}">{{ s.score|default:"—" }}</td>
+                      <td><span class="badge {% if s.status == 'NEW' %}text-bg-primary{% elif s.status == 'TAKEN' %}text-bg-success{% elif s.status == 'SKIPPED' %}text-bg-secondary{% else %}text-bg-light border text-dark{% endif %}">{{ s.status }}</span></td>
+                      <td class="text-muted small text-nowrap">
+                        {% with age=s.generated_at|hours_old %}
+                          {% if age is not None %}
+                            {% if age >= 24 %}<span class="text-warning" title="{{ s.generated_at|date:'Y-m-d H:i' }}">{{ age }}h <i class="bi bi-clock-history"></i></span>
+                            {% elif age >= 4 %}<span title="{{ s.generated_at|date:'Y-m-d H:i' }}">{{ age }}h</span>
+                            {% else %}<span class="text-success" title="{{ s.generated_at|date:'Y-m-d H:i' }}">{{ age }}h</span>
+                            {% endif %}
+                          {% endif %}
+                        {% endwith %}
+                      </td>
                     </tr>
                   {% endfor %}
                 </tbody>
@@ -169,13 +283,20 @@
           {% if review_queue %}
             <div class="table-responsive">
               <table class="table table-sm align-middle mb-0">
-                <thead><tr><th>Symbol</th><th>Score</th><th>Generated</th></tr></thead>
+                <thead><tr><th>Symbol</th><th>Score</th><th>Age</th></tr></thead>
                 <tbody>
                   {% for s in review_queue %}
                     <tr>
-                      <td class="fw-semibold"><a href="{% url 'signals:detail' s.pk %}">{{ s.instrument.symbol }}</a></td>
-                      <td>{{ s.score|default:"—" }}</td>
-                      <td class="text-nowrap text-muted small">{{ s.generated_at|date:"Y-m-d H:i" }}</td>
+                      <td class="fw-semibold"><a href="{% url 'signals:detail' s.pk %}" class="text-decoration-none">{{ s.instrument.symbol }}</a></td>
+                      <td class="{{ s.score|score_color_class }}">{{ s.score|default:"—" }}</td>
+                      <td class="text-muted small text-nowrap">
+                        {% with age=s.generated_at|hours_old %}
+                          {% if age is not None %}
+                            {% if age >= 24 %}<span class="text-warning" title="{{ s.generated_at|date:'Y-m-d H:i' }}">{{ age }}h <i class="bi bi-clock-history"></i></span>
+                            {% else %}<span title="{{ s.generated_at|date:'Y-m-d H:i' }}">{{ age }}h</span>{% endif %}
+                          {% endif %}
+                        {% endwith %}
+                      </td>
                     </tr>
                   {% endfor %}
                 </tbody>
@@ -220,6 +341,34 @@
         </div>
       </div>
 
+      {# ── Paper trade performance ──────────────────────────────────── #}
+      {% if paper_closed_count %}
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <h2 class="h5 mb-0"><i class="bi bi-bar-chart me-2 text-muted"></i>Paper trade performance</h2>
+            <a class="small" href="{% url 'dashboard:analytics' %}">Full analytics &rarr;</a>
+          </div>
+          <div class="row g-2">
+            <div class="col-4 text-center">
+              <div class="fs-4 fw-bold">{{ paper_closed_count }}</div>
+              <div class="small text-muted">Closed</div>
+            </div>
+            <div class="col-4 text-center">
+              <div class="fs-4 fw-bold {% if paper_win_rate >= 60 %}text-success{% elif paper_win_rate >= 40 %}text-warning-emphasis{% else %}text-danger{% endif %}">
+                {% if paper_win_rate is not None %}{{ paper_win_rate }}%{% else %}—{% endif %}
+              </div>
+              <div class="small text-muted">Win rate</div>
+            </div>
+            <div class="col-4 text-center">
+              <div class="fs-4 fw-bold">{{ journal_counts.wins|default:0 }}W / {{ journal_counts.losses|default:0 }}L</div>
+              <div class="small text-muted">Journal</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
       {# ── Quick links ─────────────────────────────────────────────── #}
       <div class="card shadow-sm">
         <div class="card-body">
@@ -231,7 +380,6 @@
             <a class="btn btn-outline-secondary btn-sm text-start" href="{% url 'portfolios:risk_settings' %}"><i class="bi bi-sliders me-2"></i>Allocation controls</a>
             <a class="btn btn-outline-secondary btn-sm text-start" href="{% url 'dashboard:analytics' %}"><i class="bi bi-bar-chart me-2"></i>Analytics</a>
             <a class="btn btn-outline-secondary btn-sm text-start" href="{% url 'dashboard:data_freshness' %}"><i class="bi bi-database-check me-2"></i>Data freshness</a>
-            <a class="btn btn-outline-secondary btn-sm text-start" href="{% url 'portfolios:ops_command_center' %}"><i class="bi bi-terminal me-2"></i>Ops command center</a>
           </div>
         </div>
       </div>

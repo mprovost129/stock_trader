@@ -60,8 +60,8 @@
                   <td class="fw-semibold">{{ row.symbol }}</td>
                   <td>{{ row.asset_class }}</td>
                   <td>{{ row.priority }}</td>
-                  <td>{% if row.latest_ts %}{{ row.latest_ts|date:"Y-m-d H:i" }}{% else %}—{% endif %}</td>
-                  <td>{% if row.age_minutes is not None %}{{ row.age_minutes }}{% else %}—{% endif %}</td>
+                  <td class="text-nowrap text-muted small">{% if row.latest_ts %}{{ row.latest_ts|date:"M d H:i" }}{% else %}—{% endif %}</td>
+                  <td class="{% if row.is_missing %}text-danger fw-semibold{% elif row.age_minutes is not None and row.age_minutes >= 120 %}text-warning-emphasis{% elif row.age_minutes is not None and row.age_minutes < 60 %}text-success{% endif %}">{% if row.age_minutes is not None %}{{ row.age_minutes }}{% else %}—{% endif %}</td>
                   <td>
                     {% if row.is_missing %}<span class="badge text-bg-danger">missing</span>
                     {% elif row.is_stale %}<span class="badge text-bg-warning">stale</span>
@@ -104,8 +104,8 @@
               {% for row in summary.crypto_diagnostics %}
                 <tr>
                   <td class="fw-semibold">{{ row.symbol }}</td>
-                  <td>{% if row.latest_ts %}{{ row.latest_ts|date:"Y-m-d H:i" }}{% else %}—{% endif %}</td>
-                  <td>{% if row.age_minutes is not None %}{{ row.age_minutes }}{% else %}—{% endif %}</td>
+                  <td class="text-nowrap text-muted small">{% if row.latest_ts %}{{ row.latest_ts|date:"M d H:i" }}{% else %}—{% endif %}</td>
+                  <td class="{% if row.is_missing %}text-danger fw-semibold{% elif row.age_minutes is not None and row.age_minutes >= 120 %}text-warning-emphasis{% elif row.age_minutes is not None and row.age_minutes < 60 %}text-success{% endif %}">{% if row.age_minutes is not None %}{{ row.age_minutes }}{% else %}—{% endif %}</td>
                   <td>
                     {% if row.is_missing %}<span class="badge text-bg-danger">missing</span>
                     {% elif row.is_stale %}<span class="badge text-bg-warning">stale</span>
