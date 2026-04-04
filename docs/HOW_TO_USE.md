@@ -383,7 +383,7 @@ python manage.py show_operator_guide
 
 If you are not receiving alerts:
 
-1. **Check the queue**: `python manage.py preview_alert_queue --username <you>`
+1. **Check the queue**: `python manage.py preview_alert_queue --username mprov`
    - If signals are listed as BLOCKED, the reason column tells you why (score too low, cooldown, outside session hours, already sent recently, signal too old)
 
 2. **Lower the score threshold temporarily** to confirm delivery is working end to end:

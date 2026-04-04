@@ -155,6 +155,15 @@ def _passes_price_filter(signal: Signal) -> bool:
     return True
 
 
+def _passes_direction_filter(signal: Signal) -> bool:
+    """Return False when signal direction is not in ALERT_DIRECTIONS (if set)."""
+    raw = str(getattr(settings, "ALERT_DIRECTIONS", "") or "").strip().upper()
+    if not raw:
+        return True
+    allowed = {d.strip() for d in raw.split(",") if d.strip()}
+    return not allowed or signal.direction.upper() in allowed
+
+
 def evaluate_signal_for_alert(*, signal: Signal) -> AlertDecision:
     if not hasattr(signal, "trade_plan"):
         return AlertDecision(False, "missing_trade_plan")
@@ -162,6 +171,9 @@ def evaluate_signal_for_alert(*, signal: Signal) -> AlertDecision:
     plan = signal.trade_plan
     if not plan.suggested_qty or int(plan.suggested_qty) <= 0:
         return AlertDecision(False, "zero_qty")
+
+    if not _passes_direction_filter(signal):
+        return AlertDecision(False, "direction_filtered")
 
     if not _passes_price_filter(signal):
         return AlertDecision(False, "price_filtered")
